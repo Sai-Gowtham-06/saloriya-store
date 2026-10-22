@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="/logo.png" />
+  <title>SALORIYA — Store Admin</title>
+</head>
+<body class="admin-body">
+  <header class="admin-header">
+    <a class="brand-link" href="/">
+      <img src="/logo.png" alt="SALORIYA Logo" class="site-logo" />
+      <span class="wordmark">SALORIYA<span>STORE ADMIN</span></span>
+    </a>
+    <a href="/">← View storefront</a>
+  </header>
+  <main class="admin-wrap">
+    <section id="login-panel" class="admin-panel">
+      <p class="eyebrow">PRIVATE STORE ACCESS</p><h1>Welcome <em>back.</em></h1>
+      <p>Sign in with the admin user you created in Supabase Authentication.</p>
+      <form id="login-form" class="admin-form">
+        <label>Email<input name="email" type="email" required autocomplete="username" /></label>
+        <label>Password<input name="password" type="password" required autocomplete="current-password" /></label>
+        <button class="button button-dark" type="submit">Sign in</button>
+        <p class="form-message" id="login-message" role="status"></p>
+      </form>
+    </section>
+    <section id="dashboard" hidden>
+      <div class="admin-title"><div><p class="eyebrow">YOUR JEWELLERY BOX</p><h1>Product <em>studio.</em></h1></div><button id="signout" class="button button-outline">Sign out</button></div>
+      <div class="admin-columns">
+        <section class="admin-panel">
+          <h2 id="form-title">Add a new piece</h2>
+          <form id="product-form" class="admin-form">
+            <input type="hidden" name="id" />
+            <label>Product name<input name="name" required maxlength="120" placeholder="e.g. 1g Gold Covering Earring & Chain Combo" /></label>
+            <label>Slug (web address)<input name="slug" required pattern="[a-z0-9-]+" placeholder="gold-covering-combo-set" /></label>
+            <label>Description<textarea name="description" rows="3" placeholder="Details about this piece, material (e.g. 1g gold micro plating), length, etc."></textarea></label>
+            <div class="form-row">
+              <label>Category<select name="category" required>
+                <option value="Combos">Chain &amp; Earring Combos</option>
+                <option value="Earrings">Earrings</option>
+                <option value="Bracelets">Bracelets &amp; Bangles</option>
+                <option value="Jhumkas">Jhumkas</option>
+                <option value="Studs">Studs</option>
+                <option value="Chains">Chains &amp; Necklaces</option>
+              </select></label>
+              <label>Price (₹)<input name="price" type="number" required min="0" step="0.01" placeholder="299" /></label>
+            </div>
+            <label>Colours (comma separated)<input name="colours" placeholder="Gold, Rose Gold, Silver" /></label>
+            <label>Stock quantity<input name="stock" type="number" required min="0" step="1" value="1" /></label>
+            <label>Product images<input name="images" type="file" accept="image/*" multiple /></label>
+            <div id="image-previews" class="image-previews"></div>
+            <p class="hint">Upload photos in the order of your colours (1st image for 1st colour, 2nd for 2nd colour), or name your files with the colour name (e.g. <code>green-butterfly.jpg</code>). Published images are public.</p>
+            <label class="checkbox-label"><input name="published" type="checkbox" /> Publish in storefront</label>
+            <div class="form-row"><button class="button button-dark" type="submit">Save product</button><button class="button button-outline" type="button" id="reset-form">Clear form</button></div>
+            <p class="form-message" id="product-message" role="status"></p>
+          </form>
+        </section>
+        <section class="admin-panel">
+          <div class="inventory-heading"><h2>Your products</h2><button class="button button-outline" id="refresh-products" type="button">Refresh</button></div>
+          <p class="hint">Edit a product to change its details, price or stock. Unpublish instead of deleting products linked to orders.</p>
+          <div id="admin-products" class="admin-products">Loading products…</div>
+        </section>
+      </div>
+    </section>
+  </main>
+  <script type="module" src="/src/admin.js"></script>
+</body>
+</html>

@@ -810,13 +810,13 @@ function openCheckoutModal(productId, initialColour = "") {
                 placeholder="10-digit mobile number" 
                 autocomplete="tel"
                 value="${verifiedPhone || ''}"
-                ${isPhoneVerified ? 'readonly style="background:#f0fdf4;border-color:#22c55e;color:#166534;font-weight:700;"' : ''}
+                ${isPhoneVerified ? 'readonly' : ''}
               />
               ${isPhoneVerified ? `
-                <span class="phone-verified-pill">Phone Verified ✓</span>
-                <button type="button" id="btn-change-phone" class="text-button" style="font-size:11px;color:var(--wine);cursor:pointer;white-space:nowrap;padding:0 6px;">Change</button>
+                <span class="phone-verified-pill">✓ Verified</span>
+                <button type="button" id="btn-change-phone" class="phone-change-btn">Change</button>
               ` : `
-                <button type="button" id="btn-send-otp-trigger" class="button button-small" style="background:var(--wine);color:#ffffff;border:none;border-radius:4px;padding:0 12px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;">
+                <button type="button" id="btn-send-otp-trigger" class="btn-verify-trigger">
                   Verify ⚡
                 </button>
               `}
@@ -827,33 +827,33 @@ function openCheckoutModal(productId, initialColour = "") {
         </div>
 
         <!-- Drop-in Phone OTP Verification Panel -->
-        <div id="otp-verification-panel" class="otp-box-anim" style="display:none;background:#fffaf6;border:1.5px solid var(--gold);border-radius:8px;padding:14px;margin-top:-2px;">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px;">
-            <strong style="font-size:12px;color:var(--wine);display:flex;align-items:center;gap:6px;">
-              🔒 Mobile Number Verification Code
+        <div id="otp-verification-panel" class="otp-box-anim" style="display:none;">
+          <div class="otp-panel-header">
+            <strong class="otp-panel-title">
+              🔒 Mobile Number Verification
             </strong>
-            <span id="otp-timer-display" style="font-size:11px;color:var(--muted);font-weight:700;font-family:var(--font-num,sans-serif);"></span>
+            <span id="otp-timer-display" class="otp-timer-pill"></span>
           </div>
-          <p style="font-size:11.5px;color:var(--muted);margin:0 0 10px;line-height:1.4;">
-            We sent a 6-digit verification code to <strong id="otp-phone-display" style="color:var(--ink);"></strong> to confirm your order and prevent fake bookings.
+          <p class="otp-panel-desc">
+            We sent a 6-digit confirmation code to <strong id="otp-phone-display" style="color:var(--ink);"></strong> to confirm your order and prevent fake bookings.
           </p>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <div class="otp-panel-inputs-row">
             <input 
               type="text" 
               id="otp-input-code" 
               maxlength="6" 
               inputmode="numeric" 
               placeholder="••••••" 
-              style="letter-spacing:6px;font-size:18px;text-align:center;font-weight:700;width:130px;padding:8px;border:1.5px solid var(--line);border-radius:6px;background:#ffffff;color:var(--ink);" 
+              class="otp-digit-input"
             />
-            <button type="button" id="btn-verify-otp-submit" class="button button-gold button-small" style="padding:10px 16px;font-size:11.5px;font-weight:700;">
+            <button type="button" id="btn-verify-otp-submit" class="btn-otp-verify">
               Verify Code ✓
             </button>
-            <button type="button" id="btn-resend-otp" class="button button-outline button-small" disabled style="padding:10px 12px;font-size:11px;">
+            <button type="button" id="btn-resend-otp" class="btn-otp-resend" disabled>
               Resend OTP
             </button>
           </div>
-          <p id="otp-status-msg" style="font-size:11.5px;margin:8px 0 0;line-height:1.4;"></p>
+          <p id="otp-status-msg" class="otp-status-text"></p>
         </div>
 
         <label>Shipping / Delivery Address *
@@ -886,33 +886,41 @@ function openCheckoutModal(productId, initialColour = "") {
         </div>
 
         <!-- Promo Code Input / Applied Voucher -->
-        <div class="checkout-promo-box" style="margin:4px 0 10px;padding:12px;background:#fffaf6;border:1.5px dashed var(--gold);border-radius:8px;">
+        <div class="checkout-promo-box">
           ${appliedPromo ? `
-            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
-              <div style="display:flex;align-items:center;gap:6px;">
-                <span style="font-size:16px;">🏷️</span>
-                <div>
-                  <span style="font-size:12px;font-weight:700;color:var(--wine);letter-spacing:0.5px;">${escapeHtml(appliedPromo.code)} APPLIED</span>
-                  <div style="font-size:10.5px;color:#15803d;font-weight:600;">✓ Free Delivery (₹50.00 saved!)</div>
+            <div class="checkout-promo-applied">
+              <div class="checkout-promo-applied-left">
+                <span class="checkout-promo-icon">🏷️</span>
+                <div class="checkout-promo-meta">
+                  <div class="checkout-promo-code-title">
+                    <strong>${escapeHtml(appliedPromo.code)}</strong>
+                    <span class="checkout-promo-badge">PROMO APPLIED</span>
+                  </div>
+                  <div class="checkout-promo-benefit">✓ Free Delivery Waived (₹50.00 saved!)</div>
                 </div>
               </div>
-              <button type="button" id="btn-remove-promo" class="text-button" style="color:var(--wine);font-size:11px;font-weight:700;text-decoration:underline;">
+              <button type="button" id="btn-remove-promo" class="checkout-promo-remove-btn" title="Remove promo code">
                 Remove
               </button>
             </div>
           ` : `
-            <div style="display:flex;gap:6px;">
-              <input 
-                type="text" 
-                id="promo-code-input" 
-                placeholder="Promo Code for Free Delivery (e.g. FREEDELIVERY)" 
-                style="flex:1;text-transform:uppercase;font-weight:700;font-size:11.5px;padding:8px 10px;border:1px solid #d1b490;border-radius:6px;letter-spacing:0.5px;" 
-              />
-              <button type="button" id="btn-apply-promo" class="button button-gold" style="padding:8px 14px;font-size:11.5px;font-weight:700;white-space:nowrap;">
+            <label class="checkout-promo-label">Have a Promo Code for Free Delivery?</label>
+            <div class="checkout-promo-input-row">
+              <div class="checkout-promo-input-wrap">
+                <span class="checkout-promo-prefix-icon">🏷️</span>
+                <input 
+                  type="text" 
+                  id="promo-code-input" 
+                  placeholder="Enter promo code" 
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+              </div>
+              <button type="button" id="btn-apply-promo" class="checkout-promo-apply-btn">
                 Apply
               </button>
             </div>
-            <p id="promo-code-msg" style="font-size:11px;margin:5px 0 0;line-height:1.3;display:none;"></p>
+            <p id="promo-code-msg" class="checkout-promo-feedback"></p>
           `}
         </div>
 
@@ -1059,6 +1067,20 @@ function openCheckoutModal(productId, initialColour = "") {
       }
     });
 
+    promoInput?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        applyPromoBtn?.click();
+      }
+    });
+
+    phoneInput?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !isPhoneVerified) {
+        e.preventDefault();
+        btnSendOtpTrigger?.click();
+      }
+    });
+
     removePromoBtn?.addEventListener("click", () => {
       appliedPromo = null;
       renderCheckout();
@@ -1075,9 +1097,15 @@ function openCheckoutModal(productId, initialColour = "") {
     const btnResendOtp = checkoutContent.querySelector("#btn-resend-otp");
     const btnChangePhone = checkoutContent.querySelector("#btn-change-phone");
 
-    // Restrict OTP input to 6 digits numeric
+    // Restrict OTP input to 6 digits numeric and Enter key to verify
     otpInput?.addEventListener("input", (e) => {
       e.target.value = e.target.value.replace(/\D/g, "").slice(0, 6);
+    });
+    otpInput?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        btnVerifyOtpSubmit?.click();
+      }
     });
 
     // Change phone button handler
@@ -1150,13 +1178,8 @@ function openCheckoutModal(productId, initialColour = "") {
         if (otpPanel) otpPanel.style.display = "block";
         if (otpPhoneDisplay) otpPhoneDisplay.textContent = `+91 ${cleanPhone}`;
         if (otpStatusMsg) {
-          if (data.unconfiguredGateway) {
-            otpStatusMsg.textContent = `✓ 6-digit verification code generated for +91 ${cleanPhone}. (To receive live SMS on phones, add FAST2SMS_API_KEY in Vercel settings).`;
-            otpStatusMsg.style.color = "var(--wine)";
-          } else {
-            otpStatusMsg.textContent = `✓ 6-digit OTP sent to +91 ${cleanPhone}. Please check your SMS messages.`;
-            otpStatusMsg.style.color = "#166534";
-          }
+          otpStatusMsg.textContent = `✓ 6-digit verification code sent to +91 ${cleanPhone}. Please check your SMS messages.`;
+          otpStatusMsg.style.color = "#166534";
         }
 
         startOtpCountdown(data.cooldown || 60);
@@ -1171,7 +1194,7 @@ function openCheckoutModal(productId, initialColour = "") {
         }
         if (btnSendOtpTrigger) {
           btnSendOtpTrigger.disabled = false;
-          btnSendOtpTrigger.textContent = "Send OTP ⚡";
+          btnSendOtpTrigger.textContent = "Verify ⚡";
         }
         return false;
       }
@@ -1186,7 +1209,7 @@ function openCheckoutModal(productId, initialColour = "") {
       if (!/^\d{6}$/.test(otpCode)) {
         if (otpStatusMsg) {
           otpStatusMsg.textContent = "Please enter the complete 6-digit numeric OTP.";
-          otpStatusMsg.style.color = "#a43d32";
+          otpStatusMsg.style.color = "#dc2626";
         }
         otpInput?.focus();
         return;
@@ -1217,19 +1240,10 @@ function openCheckoutModal(productId, initialColour = "") {
 
         renderCheckout();
       } catch (err) {
-        console.warn("OTP verify note:", err);
-        // If serverless endpoint is in local demo without DB, accept standard 6-digit OTP or show error
-        if (otpCode.length === 6) {
-          isPhoneVerified = true;
-          verifiedPhone = cleanPhone;
-          phoneVerificationToken = `verified_${Date.now()}`;
-          if (otpTimerInterval) clearInterval(otpTimerInterval);
-          renderCheckout();
-          return;
-        }
+        console.warn("OTP verify error:", err);
         if (otpStatusMsg) {
           otpStatusMsg.textContent = err.message || "Invalid OTP code. Please check and try again.";
-          otpStatusMsg.style.color = "#a43d32";
+          otpStatusMsg.style.color = "#dc2626";
         }
         if (btnVerifyOtpSubmit) {
           btnVerifyOtpSubmit.disabled = false;

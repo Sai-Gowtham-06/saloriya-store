@@ -1303,22 +1303,22 @@ function openCheckoutModal(productId, initialColour = "") {
             ⚡ Open Installed UPI App on Mobile ↗
           </a>
 
-          <!-- Individual Direct Shortcuts for Top UPI Apps -->
-          <div class="upi-apps-row" style="display:grid;grid-template-columns:repeat(4, 1fr);gap:6px;margin-bottom:8px;">
-            <a href="${upiGPay}" class="upi-direct-app-btn gpay-link" style="text-decoration:none;padding:8px 4px;border:1.5px solid #4285f4;border-radius:8px;background:#ffffff;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;font-weight:700;color:#1a73e8;text-align:center;">
-              <span style="font-size:16px;">🔵</span>
+          <!-- Individual Direct Shortcuts for Top UPI Apps with Original Logos -->
+          <div class="upi-apps-row">
+            <a href="${upiGPay}" class="upi-direct-app-btn gpay-link" title="Pay with Google Pay">
+              <img src="/gpay-icon.svg" alt="Google Pay" class="upi-app-logo" />
               <span>GPay</span>
             </a>
-            <a href="${upiPhonePe}" class="upi-direct-app-btn phonepe-link" style="text-decoration:none;padding:8px 4px;border:1.5px solid #5f259f;border-radius:8px;background:#ffffff;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;font-weight:700;color:#5f259f;text-align:center;">
-              <span style="font-size:16px;">🟣</span>
+            <a href="${upiPhonePe}" class="upi-direct-app-btn phonepe-link" title="Pay with PhonePe">
+              <img src="/phonepe-icon.svg" alt="PhonePe" class="upi-app-logo" />
               <span>PhonePe</span>
             </a>
-            <a href="${upiPaytm}" class="upi-direct-app-btn paytm-link" style="text-decoration:none;padding:8px 4px;border:1.5px solid #00b9f1;border-radius:8px;background:#ffffff;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;font-weight:700;color:#002e6e;text-align:center;">
-              <span style="font-size:16px;">🟦</span>
+            <a href="${upiPaytm}" class="upi-direct-app-btn paytm-link" title="Pay with Paytm">
+              <img src="/paytm-icon.svg" alt="Paytm" class="upi-app-logo paytm-logo-img" />
               <span>Paytm</span>
             </a>
-            <a href="${upiUniversal}" class="upi-direct-app-btn cred-link" style="text-decoration:none;padding:8px 4px;border:1.5px solid var(--gold);border-radius:8px;background:#ffffff;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;font-weight:700;color:var(--wine);text-align:center;">
-              <span style="font-size:16px;">⚡</span>
+            <a href="${upiUniversal}" class="upi-direct-app-btn cred-link" title="Pay with Other UPI App">
+              <img src="/upi-logo.svg" alt="Other UPI" class="upi-app-logo upi-badge-img" />
               <span>Other UPI</span>
             </a>
           </div>

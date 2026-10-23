@@ -4873,3 +4873,115 @@ body.modal-open {
   }
 }
 
+/* ========================================================
+   UPI DIRECT APPS ROW & AUTHENTIC BRAND LOGO BUTTONS
+   ======================================================== */
+.upi-apps-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.upi-direct-app-btn {
+  text-decoration: none;
+  padding: 10px 4px 8px;
+  border-radius: 10px;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  transition: transform 0.16s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.16s ease, background 0.16s ease;
+  min-height: 64px;
+  box-sizing: border-box;
+}
+
+.upi-direct-app-btn:hover,
+.upi-direct-app-btn:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.1);
+}
+
+.upi-direct-app-btn:active {
+  transform: scale(0.96);
+}
+
+.upi-direct-app-btn.gpay-link {
+  border: 1.5px solid #4285f4;
+  color: #1a73e8;
+}
+.upi-direct-app-btn.gpay-link:hover {
+  background: #f8fbff;
+}
+
+.upi-direct-app-btn.phonepe-link {
+  border: 1.5px solid #5f259f;
+  color: #5f259f;
+}
+.upi-direct-app-btn.phonepe-link:hover {
+  background: #faf5ff;
+}
+
+.upi-direct-app-btn.paytm-link {
+  border: 1.5px solid #00baf2;
+  color: #002970;
+}
+.upi-direct-app-btn.paytm-link:hover {
+  background: #f0faff;
+}
+
+.upi-direct-app-btn.cred-link {
+  border: 1.5px solid var(--gold);
+  color: var(--wine);
+}
+.upi-direct-app-btn.cred-link:hover {
+  background: #fffcf8;
+}
+
+.upi-app-logo {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  display: block;
+}
+
+.paytm-logo-img {
+  width: 44px;
+  height: 22px;
+}
+
+.upi-badge-img {
+  width: 40px;
+  height: 22px;
+}
+
+@media (max-width: 480px) {
+  .upi-apps-row {
+    gap: 6px;
+  }
+  .upi-direct-app-btn {
+    padding: 8px 2px 6px;
+    font-size: 10px;
+    min-height: 56px;
+  }
+  .upi-app-logo {
+    width: 24px;
+    height: 24px;
+  }
+  .paytm-logo-img {
+    width: 36px;
+    height: 18px;
+  }
+  .upi-badge-img {
+    width: 34px;
+    height: 18px;
+  }
+}
+
+

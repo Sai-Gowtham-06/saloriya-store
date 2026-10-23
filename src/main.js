@@ -906,10 +906,14 @@ function openCheckoutModal(productId, initialColour = "") {
       msg.textContent = "Placing your COD order…";
       msg.classList.remove("error");
 
+      const orderIdKey = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : `cod_${Date.now()}`;
+      const shortId = orderIdKey.slice(0, 8).toUpperCase();
+
       try {
-        const { data: newOrder, error: orderErr } = await supabase
+        const { error: orderErr } = await supabase
           .from("orders")
           .insert({
+            id: orderIdKey,
             customer_name: customerName,
             phone,
             address: { street, city, state, pincode, transport_fee_paise: TRANSPORT_FEE_PAISE },
@@ -917,12 +921,27 @@ function openCheckoutModal(productId, initialColour = "") {
             payment_status: "pending",
             order_status: "pending",
             total_paise: totalPaise
-          })
-          .select()
-          .single();
+          });
 
-        const orderIdKey = newOrder?.id || `cod_${Date.now()}`;
-        const shortId = orderIdKey.slice(0, 8).toUpperCase();
+        if (orderErr) {
+          console.warn("Direct order insert note (RLS):", orderErr.message);
+        } else {
+          // Insert line item in Supabase
+          try {
+            await supabase
+              .from("order_items")
+              .insert({
+                order_id: orderIdKey,
+                product_id: p.id,
+                product_name: p.name,
+                colour: chosenColour,
+                quantity: qty,
+                unit_price_paise: p.price_paise
+              });
+          } catch (itemErr) {
+            console.warn("order_items insert warning:", itemErr);
+          }
+        }
 
         saveLocalOrder({
           id: orderIdKey,
@@ -956,32 +975,6 @@ function openCheckoutModal(productId, initialColour = "") {
           paymentMethod: "cod",
           hasScreenshot: false
         });
-
-        if (orderErr) {
-          console.warn("Direct order insert blocked by RLS:", orderErr.message);
-          const waMsg = encodeURIComponent(`Hello SALORIYA! I'd like to place an order from your website:\nProduct: ${p.name}\nColour: ${chosenColour}\nQty: ${qty}\nItem Total: ${money(subtotalPaise)}\nTransport/Courier: ₹50.00\nTotal Payable: ${money(totalPaise)}\nCustomer: ${customerName}\nPhone: ${phone}\nAddress: ${street}, ${city}, ${state} - ${pincode}`);
-          window.open(`https://wa.me/918680824598?text=${waMsg}`, "_blank");
-          showOrderSuccessScreen(orderIdKey, p, chosenColour, qty, totalPaise, customerName, phone, `${street}, ${city}, ${state} - ${pincode}`, "cod", "pending");
-          return;
-        }
-
-        // Insert line item if newOrder was created
-        if (newOrder?.id) {
-          try {
-            await supabase
-              .from("order_items")
-              .insert({
-                order_id: newOrder.id,
-                product_id: p.id,
-                product_name: p.name,
-                colour: chosenColour,
-                quantity: qty,
-                unit_price_paise: p.price_paise
-              });
-          } catch (itemErr) {
-            console.warn("order_items insert warning:", itemErr);
-          }
-        }
 
         showOrderSuccessScreen(orderIdKey, p, chosenColour, qty, totalPaise, customerName, phone, `${street}, ${city}, ${state} - ${pincode}`, "cod", "pending");
       } catch (err) {
@@ -1169,7 +1162,7 @@ function openCheckoutModal(productId, initialColour = "") {
 
       await new Promise(r => setTimeout(r, 400));
 
-      let finalOrderId = `prepaid_${Date.now()}`;
+      const finalOrderId = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : `prepaid_${Date.now()}`;
       const addressFormatted = `${orderData.street}, ${orderData.city}, ${orderData.state} - ${orderData.pincode}`;
 
       try {
@@ -1198,11 +1191,12 @@ function openCheckoutModal(productId, initialColour = "") {
         }
 
         // 2. Order is placed directly as 'confirmed' and 'paid' upon screenshot upload!
-        // Binary screenshot is NOT stored in the database! (Stored in browser storage keyed by order)
+        // Inserts directly into Supabase orders table (without .select() so anon customers can insert without RLS read violations)
         try {
-          const { data: newOrder, error: orderErr } = await supabase
+          const { error: orderErr } = await supabase
             .from("orders")
             .insert({
+              id: finalOrderId,
               customer_name: orderData.customerName,
               phone: orderData.phone,
               address: {
@@ -1211,25 +1205,24 @@ function openCheckoutModal(productId, initialColour = "") {
                 state: orderData.state,
                 pincode: orderData.pincode,
                 has_screenshot: true,
+                screenshot_data: uploadedScreenshotBase64,
                 transport_fee_paise: TRANSPORT_FEE_PAISE
               },
               payment_method: "prepaid",
               payment_status: "paid",
               order_status: "confirmed",
               total_paise: orderData.totalPaise
-            })
-            .select()
-            .single();
+            });
 
-          if (!orderErr && newOrder?.id) {
-            finalOrderId = newOrder.id;
-
+          if (orderErr) {
+            console.warn("Direct order insert note (RLS):", orderErr.message);
+          } else {
             // Insert line item in Supabase
             try {
               await supabase
                 .from("order_items")
                 .insert({
-                  order_id: newOrder.id,
+                  order_id: finalOrderId,
                   product_id: p.id,
                   product_name: p.name,
                   colour: orderData.chosenColour,
@@ -1239,8 +1232,6 @@ function openCheckoutModal(productId, initialColour = "") {
             } catch (itemErr) {
               console.warn("order_items insert error:", itemErr);
             }
-          } else if (orderErr) {
-            console.warn("Direct order insert note (RLS):", orderErr.message);
           }
         } catch (orderDbErr) {
           console.warn("Supabase order insert caught error:", orderDbErr);

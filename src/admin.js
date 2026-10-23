@@ -1399,8 +1399,10 @@ function openScreenshotModal(orderId) {
   const waMsg = encodeURIComponent(`Hello ${order.customer_name}! This is SALORIYA regarding your order #${shortId} (${money(order.total_paise)}).\nPlease share your payment receipt screenshot with us for verification.`);
   if (screenshotModalWaLink) screenshotModalWaLink.href = `https://wa.me/${waPhone}?text=${waMsg}`;
 
-  // Retrieve client-side payment screenshot (no binary storage in database)
-  const savedProof = localStorage.getItem(`saloriya_screenshot_${orderId}`) ||
+  // Retrieve customer payment screenshot (from address object in database or local storage fallback)
+  const savedProof = order.address?.screenshot_data ||
+    order.address?.screenshot_url ||
+    localStorage.getItem(`saloriya_screenshot_${orderId}`) ||
     (order.id === localStorage.getItem("saloriya_latest_order_id") ? localStorage.getItem("saloriya_latest_screenshot") : null) ||
     localStorage.getItem("saloriya_latest_screenshot");
 

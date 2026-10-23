@@ -902,12 +902,25 @@ function openCheckoutModal(productId, initialColour = "") {
         return;
       }
 
-      // COD: Place order directly with pending status
+      // COD order: Admin confirmation is ONLY for online payment. COD is confirmed directly upon placing order and stock is deducted immediately!
       msg.textContent = "Placing your COD order…";
       msg.classList.remove("error");
 
       const orderIdKey = (typeof crypto !== "undefined" && crypto.randomUUID) ? crypto.randomUUID() : `cod_${Date.now()}`;
       const shortId = orderIdKey.slice(0, 8).toUpperCase();
+
+      // Deduct stock immediately for COD order
+      try {
+        const currentStock = Number(p.stock) || 0;
+        const newStock = Math.max(0, currentStock - qty);
+        p.stock = newStock;
+        await supabase
+          .from("products")
+          .update({ stock: newStock, updated_at: new Date().toISOString() })
+          .eq("id", p.id);
+      } catch (stockErr) {
+        console.warn("Stock deduction warning for COD order:", stockErr);
+      }
 
       try {
         const { error: orderErr } = await supabase
@@ -919,7 +932,7 @@ function openCheckoutModal(productId, initialColour = "") {
             address: { street, city, state, pincode, transport_fee_paise: TRANSPORT_FEE_PAISE },
             payment_method: "cod",
             payment_status: "pending",
-            order_status: "pending",
+            order_status: "confirmed",
             total_paise: totalPaise
           });
 
@@ -950,7 +963,7 @@ function openCheckoutModal(productId, initialColour = "") {
           address: { street, city, state, pincode, transport_fee_paise: TRANSPORT_FEE_PAISE },
           payment_method: "cod",
           payment_status: "pending",
-          order_status: "pending",
+          order_status: "confirmed",
           total_paise: totalPaise,
           created_at: new Date().toISOString()
         }, {
@@ -976,7 +989,7 @@ function openCheckoutModal(productId, initialColour = "") {
           hasScreenshot: false
         });
 
-        showOrderSuccessScreen(orderIdKey, p, chosenColour, qty, totalPaise, customerName, phone, `${street}, ${city}, ${state} - ${pincode}`, "cod", "pending");
+        showOrderSuccessScreen(orderIdKey, p, chosenColour, qty, totalPaise, customerName, phone, `${street}, ${city}, ${state} - ${pincode}`, "cod", "confirmed");
       } catch (err) {
         console.error("Order error:", err);
         msg.textContent = "Something went wrong. Please order via WhatsApp.";
@@ -1156,8 +1169,8 @@ function openCheckoutModal(productId, initialColour = "") {
       }
 
       verifyBtn.disabled = true;
-      verifyBtn.textContent = "Confirming order & updating stock…";
-      verifyMsg.textContent = "Saving payment details, reducing product stock, and confirming your order…";
+      verifyBtn.textContent = "Submitting payment proof…";
+      verifyMsg.textContent = "Saving payment details and submitting order for admin confirmation…";
       verifyMsg.classList.remove("error");
 
       await new Promise(r => setTimeout(r, 400));
@@ -1166,32 +1179,8 @@ function openCheckoutModal(productId, initialColour = "") {
       const addressFormatted = `${orderData.street}, ${orderData.city}, ${orderData.state} - ${orderData.pincode}`;
 
       try {
-        // 1. Immediately reduce product stock in Supabase database upon payment screenshot upload!
-        try {
-          const { data: latestProd } = await supabase
-            .from("products")
-            .select("stock")
-            .eq("id", p.id)
-            .single();
-
-          const currentStock = latestProd ? Number(latestProd.stock) : Number(p.stock);
-          const newStock = Math.max(0, currentStock - orderData.qty);
-
-          await supabase
-            .from("products")
-            .update({
-              stock: newStock,
-              updated_at: new Date().toISOString()
-            })
-            .eq("id", p.id);
-
-          p.stock = newStock;
-        } catch (stockErr) {
-          console.warn("Stock auto-deduction error:", stockErr);
-        }
-
-        // 2. Order is placed directly as 'confirmed' and 'paid' upon screenshot upload!
-        // Inserts directly into Supabase orders table (without .select() so anon customers can insert without RLS read violations)
+        // Online Payment: Order placed directly into Supabase as pending, awaiting admin verification of payment screenshot
+        // Admin will verify screenshot in Admin Console and confirm order to deduct product stock!
         try {
           const { error: orderErr } = await supabase
             .from("orders")
@@ -1209,8 +1198,8 @@ function openCheckoutModal(productId, initialColour = "") {
                 transport_fee_paise: TRANSPORT_FEE_PAISE
               },
               payment_method: "prepaid",
-              payment_status: "paid",
-              order_status: "confirmed",
+              payment_status: "awaiting_verification",
+              order_status: "pending",
               total_paise: orderData.totalPaise
             });
 
@@ -1259,8 +1248,8 @@ function openCheckoutModal(productId, initialColour = "") {
               transport_fee_paise: TRANSPORT_FEE_PAISE
             },
             payment_method: "prepaid",
-            payment_status: "paid",
-            order_status: "confirmed",
+            payment_status: "awaiting_verification",
+            order_status: "pending",
             total_paise: orderData.totalPaise,
             created_at: new Date().toISOString(),
             items: [{
@@ -1297,7 +1286,7 @@ function openCheckoutModal(productId, initialColour = "") {
           hasScreenshot: true
         });
 
-        // 5. Show order confirmed success screen
+        // 5. Show order success screen (Admin confirmation is required for online payment)
         showOrderSuccessScreen(
           finalOrderId,
           p,
@@ -1308,7 +1297,7 @@ function openCheckoutModal(productId, initialColour = "") {
           orderData.phone,
           addressFormatted,
           "prepaid",
-          "confirmed"
+          "pending"
         );
       } catch (err) {
         console.error("Payment confirmation error:", err);
@@ -1323,41 +1312,41 @@ function openCheckoutModal(productId, initialColour = "") {
   function showOrderSuccessScreen(orderId, p, colour, quantity, totalPaise, name, phone, address, paymentMethod = "cod", paymentStatus = "confirmed") {
     const shortId = orderId ? `#ORD-${orderId.slice(0, 8).toUpperCase()}` : "#ORD-DIRECT";
     const paymentLabel = paymentMethod === "prepaid" 
-      ? "Online Prepaid (Payment Screenshot Received · CONFIRMED ✓)" 
-      : "Cash on Delivery (COD)";
+      ? "Online UPI (Screenshot Submitted · Awaiting Admin Verification ⏳)" 
+      : "Cash on Delivery (COD · Confirmed ✓)";
 
     const waText = encodeURIComponent(`Hello SALORIYA! I just placed an order:\nOrder ID: ${shortId}\nProduct: ${p.name}\nColour: ${colour}\nQuantity: ${quantity}\nTotal Amount: ${money(totalPaise)} (includes ₹50 Transport)\nPayment: ${paymentLabel}\nName: ${name}\nPhone: ${phone}\nAddress: ${address}${paymentMethod === 'prepaid' ? '\n(Payment screenshot attached / uploaded on site)' : ''}`);
     const waUrl = `https://wa.me/918680824598?text=${waText}`;
 
     checkoutContent.innerHTML = `
-      <div class="order-success-screen">
-        <div class="order-success-icon" style="background:#dcfce7;color:#166534;border-color:#22c55e;">
+      <div class="order-success-screen" style="text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 16px;width:100%;max-width:520px;margin:0 auto;box-sizing:border-box;">
+        <div class="order-success-icon" style="background:#dcfce7;color:#166534;border:2px solid #22c55e;margin:0 auto 14px;width:60px;height:60px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:26px;">
           ✓
         </div>
-        <p class="eyebrow" style="color:#166534;">
-          ${paymentMethod === 'prepaid' ? 'PAYMENT RECEIVED · ORDER CONFIRMED' : 'ORDER PLACED SUCCESSFULLY'}
+        <p class="eyebrow" style="color:#166534;text-align:center;width:100%;margin:0 auto 8px;font-weight:700;letter-spacing:1.2px;font-size:12.5px;display:block;">
+          ORDER PLACED SUCCESSFULLY
         </p>
-        <h3 style="font-family:'Playfair Display',serif;font-size:25px;margin:4px 0;">Thank you, ${escapeHtml(name)}!</h3>
-        <p style="color:var(--muted);font-size:12.5px;max-width:440px;margin:0 auto 14px;">
+        <h3 style="font-family:'Playfair Display',serif;font-size:25px;margin:4px auto 8px;text-align:center;width:100%;color:var(--ink);">Thank you, ${escapeHtml(name)}!</h3>
+        <p style="color:var(--muted);font-size:12.5px;max-width:440px;margin:0 auto 16px;text-align:center;line-height:1.5;">
           ${paymentMethod === 'prepaid'
-            ? 'Your payment screenshot has been received. Your jewellery order is confirmed and stock has been automatically reserved for immediate dispatch.'
-            : 'Your jewellery order has been received by SALORIYA and will be prepared for dispatch.'
+            ? 'Your payment screenshot has been uploaded. Our admin team will verify the payment and confirm your order for dispatch.'
+            : 'Your jewellery order has been confirmed and our team will prepare your piece for immediate dispatch.'
           }
         </p>
-        <div class="order-success-id">${shortId}</div>
-        <div style="background:#faf4f0;border:1px solid var(--line);border-radius:10px;padding:16px;text-align:left;font-size:12px;line-height:1.6;margin-bottom:16px;">
+        <div class="order-success-id" style="margin:0 auto 16px;text-align:center;display:inline-block;">${shortId}</div>
+        <div style="background:#faf4f0;border:1px solid var(--line);border-radius:10px;padding:16px;text-align:left;font-size:12px;line-height:1.6;margin-bottom:16px;width:100%;box-sizing:border-box;">
           <strong>Item:</strong> ${escapeHtml(p.name)} (${escapeHtml(colour)}) × ${quantity}<br/>
           <strong>Total Amount:</strong> ${money(totalPaise)} <span style="color:var(--muted);font-size:10.5px;">(includes ₹50 transport fee)</span><br/>
           <strong>Delivery to:</strong> ${escapeHtml(address)}<br/>
-          <strong>Payment Status:</strong> ${escapeHtml(paymentLabel)}<br/>
-          <small style="color:#166534;font-weight:600;display:block;margin-top:6px;">✉️ Notification automatically sent to store email (Saloriyaofficial@gmail.com)</small>
+          <strong>Payment Mode:</strong> ${escapeHtml(paymentLabel)}<br/>
+          <small style="color:#166534;font-weight:600;display:block;margin-top:8px;text-align:center;">✉️ Notification automatically sent to store email (Saloriyaofficial@gmail.com)</small>
         </div>
 
-        <a href="${waUrl}" target="_blank" rel="noopener,noreferrer" class="modal-wa-btn" style="margin-bottom:10px;">
+        <a href="${waUrl}" target="_blank" rel="noopener,noreferrer" class="modal-wa-btn" style="margin-bottom:10px;width:100%;justify-content:center;">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
             <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91C2.13 13.66 2.59 15.36 3.45 16.86L2.05 22L7.3 20.62C8.75 21.41 10.38 21.83 12.04 21.83C17.5 21.83 21.95 17.38 21.95 11.92C21.95 9.27 20.92 6.78 19.05 4.91C17.18 3.03 14.69 2 12.04 2ZM12.05 20.16C10.57 20.16 9.12 19.76 7.85 19.01L7.55 18.83L4.43 19.65L5.26 16.61L5.06 16.29C4.24 14.99 3.8 13.47 3.8 11.91C3.8 7.37 7.5 3.67 12.05 3.67C14.25 3.67 16.31 4.53 17.87 6.09C19.42 7.65 20.28 9.72 20.28 11.92C20.28 16.46 16.58 20.16 12.05 20.16ZM16.57 14.33C16.32 14.2 15.1 13.6 14.87 13.52C14.64 13.43 14.48 13.39 14.31 13.64C14.15 13.88 13.68 14.44 13.53 14.6C13.39 14.77 13.25 14.79 13 14.66C12.75 14.54 11.95 14.28 11 13.43C10.26 12.77 9.76 11.95 9.61 11.7C9.47 11.45 9.6 11.32 9.72 11.2C9.83 11.09 9.97 10.91 10.1 10.76C10.22 10.61 10.26 10.5 10.34 10.34C10.42 10.17 10.38 10.03 10.32 9.91C10.26 9.78 9.76 8.56 9.56 8.06C9.36 7.58 9.16 7.64 9.01 7.63C8.87 7.62 8.71 7.62 8.54 7.62C8.38 7.62 8.11 7.68 7.89 7.93C7.66 8.17 7.03 8.76 7.03 9.97C7.03 11.18 7.91 12.35 8.03 12.51C8.16 12.68 9.77 15.16 12.24 16.22C12.82 16.47 13.28 16.63 13.64 16.74C14.23 16.93 14.76 16.9 15.19 16.84C15.67 16.77 16.66 16.24 16.87 15.66C17.07 15.07 17.07 14.57 17.01 14.47C16.95 14.37 16.81 14.45 16.57 14.33Z"/>
           </svg>
-          Send Order Confirmation on WhatsApp ↗
+          Send Order Details on WhatsApp ↗
         </a>
         <button type="button" class="button button-outline" data-close-checkout style="width:100%;">
           Continue Shopping

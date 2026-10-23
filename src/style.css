@@ -4374,3 +4374,111 @@ body.modal-open {
   font-family: var(--admin-num-font) !important;
   font-weight: 700 !important;
 }
+
+/* ==========================================================================
+   Centered Luxury Order Success Screen Layout
+   ========================================================================== */
+.order-success-screen {
+  text-align: center !important;
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 20px 12px !important;
+  width: 100% !important;
+  max-width: 520px !important;
+  margin: 0 auto !important;
+}
+
+.order-success-screen .order-success-icon {
+  margin: 0 auto 14px !important;
+}
+
+.order-success-screen .eyebrow {
+  text-align: center !important;
+  width: 100% !important;
+  margin: 0 auto 8px !important;
+  display: block !important;
+}
+
+.order-success-screen h3 {
+  text-align: center !important;
+  margin: 0 auto 8px !important;
+}
+
+.order-success-screen p {
+  text-align: center !important;
+}
+
+.order-success-screen .order-success-id {
+  text-align: center !important;
+  margin: 0 auto 16px !important;
+  display: inline-block !important;
+}
+
+/* ==========================================================================
+   Admin Payment Method Separation Tabs (All vs Online UPI vs COD)
+   ========================================================================== */
+.orders-payment-type-tabs {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.payment-type-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #ffffff;
+  border: 1.5px solid var(--line);
+  padding: 9px 18px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.payment-type-tab:hover {
+  border-color: var(--wine);
+  color: var(--wine);
+}
+
+.payment-type-tab.active {
+  background: var(--wine);
+  color: #ffffff;
+  border-color: var(--wine);
+  box-shadow: 0 4px 14px rgba(134, 30, 56, 0.22);
+}
+
+.payment-type-tab .tab-count {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: #f4ece6;
+  color: var(--ink);
+  font-weight: 700;
+  font-family: var(--admin-num-font), sans-serif;
+}
+
+.payment-type-tab.active .tab-count {
+  background: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+}
+
+.payment-type-tab .tab-count-highlight {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.order-card.order-card-prepaid {
+  border-left: 4px solid var(--gold) !important;
+}
+
+.order-card.order-card-cod {
+  border-left: 4px solid #0284c7 !important;
+}
+

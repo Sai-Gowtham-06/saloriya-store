@@ -610,7 +610,9 @@ const ordersContainer = document.querySelector("#orders-list-container");
 const ordersMessage = document.querySelector("#orders-message");
 const ordersSearchInput = document.querySelector("#orders-search");
 const ordersFilterChips = document.querySelector("#orders-filter-chips");
+const ordersPaymentTabs = document.querySelector("#orders-payment-type-tabs");
 const refreshOrdersBtn = document.querySelector("#refresh-orders");
+let activePaymentFilter = "all"; // 'all' | 'prepaid' | 'cod'
 
 async function loadOrders() {
   if (!isSupabaseConfigured) return;
@@ -686,6 +688,11 @@ function updateMetrics() {
   const deliveredCount = ordersList.filter(o => o.order_status === "delivered").length;
   const cancelledCount = ordersList.filter(o => o.order_status === "cancelled").length;
 
+  // Payment separation counts
+  const prepaidList = ordersList.filter(o => o.payment_method === "prepaid");
+  const codList = ordersList.filter(o => o.payment_method === "cod");
+  const pendingPrepaidCount = prepaidList.filter(o => o.order_status === "pending").length;
+
   // Total sales: sum of total_paise for non-cancelled orders
   const revenuePaise = ordersList
     .filter(o => o.order_status !== "cancelled")
@@ -718,6 +725,15 @@ function updateMetrics() {
     }
   }
 
+  // Payment method tab counts
+  const setElText = (id, txt) => {
+    const el = document.querySelector(id);
+    if (el) el.textContent = txt;
+  };
+  setElText("#count-payment-all", totalCount);
+  setElText("#count-payment-prepaid", `${prepaidList.length}${pendingPrepaidCount > 0 ? ` (${pendingPrepaidCount} pending)` : ''}`);
+  setElText("#count-payment-cod", codList.length);
+
   // Filter chip counts
   const setChipCount = (id, count) => {
     const el = document.querySelector(id);
@@ -734,12 +750,19 @@ function updateMetrics() {
 function getFilteredOrders() {
   let list = ordersList;
 
-  // Filter by status
+  // 1. Separate by payment method (All vs Online Prepaid vs COD)
+  if (activePaymentFilter === "prepaid") {
+    list = list.filter(o => o.payment_method === "prepaid");
+  } else if (activePaymentFilter === "cod") {
+    list = list.filter(o => o.payment_method === "cod");
+  }
+
+  // 2. Filter by status
   if (activeOrderFilter !== "all") {
     list = list.filter(o => o.order_status === activeOrderFilter);
   }
 
-  // Search filter
+  // 3. Search filter
   const q = orderSearchQuery.trim().toLowerCase();
   if (q) {
     list = list.filter(o => {
@@ -865,17 +888,21 @@ function orderCard(order) {
     `;
   }).join("") : `<p class="hint">No item details recorded for this order.</p>`;
 
-  // Action buttons depending on status
+  const isPrepaid = order.payment_method === "prepaid";
+  const paymentMethodBadge = isPrepaid
+    ? `<span class="payment-method-badge prepaid-badge" style="background:#fef3c7;color:#92400e;border:1.5px solid #f59e0b;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:4px;">⚡ ONLINE UPI</span>`
+    : `<span class="payment-method-badge cod-badge" style="background:#e0f2fe;color:#0369a1;border:1.5px solid #7dd3fc;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:4px;">💵 CASH ON DELIVERY</span>`;
+
+  // Action buttons depending on status and payment method
   let actionButtonsHtml = "";
   if (order.order_status === "pending") {
-    const isAwaitingPayment = order.payment_method === "prepaid" && order.payment_status === "awaiting_verification";
     actionButtonsHtml = `
       <button type="button" class="button btn-confirm-order button-small" data-action="confirm" data-order-id="${order.id}">
-        ${isAwaitingPayment ? '✓ Verify & Confirm (Deduct Stock)' : '✓ Confirm Order (Reduce Stock)'}
+        ${isPrepaid ? '✓ Verify Screenshot & Confirm (Deduct Stock)' : '✓ Confirm Order (Reduce Stock)'}
       </button>
-      ${(order.payment_method === "prepaid" || order.address?.has_screenshot) ? `
+      ${(isPrepaid || order.address?.has_screenshot || order.address?.screenshot_data) ? `
         <button type="button" class="button button-outline button-small" data-action="view-screenshot" data-order-id="${order.id}" style="border-color:var(--wine);color:var(--wine);font-weight:600;">
-          🖼️ Screenshot
+          🖼️ View Screenshot
         </button>
       ` : ''}
       <button type="button" class="button button-outline button-small" data-action="cancel" data-order-id="${order.id}">
@@ -884,7 +911,7 @@ function orderCard(order) {
     `;
   } else if (order.order_status === "confirmed") {
     actionButtonsHtml = `
-      ${(order.payment_method === "prepaid" || order.address?.has_screenshot) ? `
+      ${(isPrepaid || order.address?.has_screenshot || order.address?.screenshot_data) ? `
         <button type="button" class="button button-outline button-small" data-action="view-screenshot" data-order-id="${order.id}" style="border-color:var(--wine);color:var(--wine);font-weight:600;">
           🖼️ Screenshot
         </button>
@@ -901,7 +928,7 @@ function orderCard(order) {
     `;
   } else if (order.order_status === "shipped") {
     actionButtonsHtml = `
-      ${(order.payment_method === "prepaid" || order.address?.has_screenshot) ? `
+      ${(isPrepaid || order.address?.has_screenshot || order.address?.screenshot_data) ? `
         <button type="button" class="button button-outline button-small" data-action="view-screenshot" data-order-id="${order.id}" style="border-color:var(--wine);color:var(--wine);font-weight:600;">
           🖼️ Screenshot
         </button>
@@ -916,7 +943,7 @@ function orderCard(order) {
   } else if (order.order_status === "delivered") {
     actionButtonsHtml = `
       <span class="status-tag status-tag-delivered">Order Completed ✓</span>
-      ${(order.payment_method === "prepaid" || order.address?.has_screenshot) ? `
+      ${(isPrepaid || order.address?.has_screenshot || order.address?.screenshot_data) ? `
         <button type="button" class="button button-outline button-small" data-action="view-screenshot" data-order-id="${order.id}" style="margin-left:6px;font-size:11px;">
           🖼️ Screenshot
         </button>
@@ -930,7 +957,7 @@ function orderCard(order) {
   }
 
   return `
-    <article class="order-card" data-order-id="${order.id}">
+    <article class="order-card order-card-${order.payment_method || 'cod'}" data-order-id="${order.id}">
       <header class="order-card-header">
         <div class="order-header-left">
           <span class="order-id-badge" title="Click to copy full order ID" data-copy-id="${order.id}">
@@ -939,12 +966,19 @@ function orderCard(order) {
           <span class="order-date">${dateFormatted}</span>
         </div>
         <div class="order-badges-group">
+          ${paymentMethodBadge}
           <span class="status-tag ${statusClass}">
             ● ${order.order_status}
           </span>
-          <span class="payment-tag ${isPaid ? 'paid' : (order.payment_status === 'awaiting_verification' ? 'awaiting' : '')}" style="${order.payment_status === 'awaiting_verification' ? 'background:#fef3c7;color:#92400e;border:1px solid #f59e0b;' : ''}">
-            ${order.payment_status === 'awaiting_verification' ? '⚠️ PENDING PAYMENT VERIFICATION' : `${order.payment_method?.toUpperCase()} · ${order.payment_status?.toUpperCase()}`}
-          </span>
+          ${isPrepaid && order.order_status === 'pending' ? `
+            <span class="payment-tag awaiting" style="background:#fef3c7;color:#92400e;border:1px solid #f59e0b;font-weight:700;">
+              ⚠️ AWAITING ADMIN CONFIRMATION
+            </span>
+          ` : `
+            <span class="payment-tag ${isPaid ? 'paid' : ''}">
+              ${order.payment_status?.toUpperCase()}
+            </span>
+          `}
         </div>
       </header>
 
@@ -1160,6 +1194,8 @@ async function confirmOrderAndReduceStock(orderId) {
     return;
   }
 
+  updateLocalOrderStatus(orderId, "confirmed", order.payment_method === "prepaid" ? "paid" : undefined);
+
   message(ordersMessage, `✓ Order #${order.id.slice(0, 8).toUpperCase()} Confirmed! Stock updated: ${stockReductionsSummary.join(" | ") || "Stock reduced successfully."}`);
 
   // Refresh both products and orders
@@ -1352,6 +1388,15 @@ ordersFilterChips?.addEventListener("click", e => {
   if (!chip) return;
   activeOrderFilter = chip.dataset.status;
   ordersFilterChips.querySelectorAll(".filter-chip").forEach(c => c.classList.toggle("active", c === chip));
+  renderOrders();
+});
+
+// Payment method segmented switcher (All vs Online UPI vs Cash on Delivery)
+ordersPaymentTabs?.addEventListener("click", e => {
+  const tab = e.target.closest(".payment-type-tab");
+  if (!tab) return;
+  activePaymentFilter = tab.dataset.paymentFilter || "all";
+  ordersPaymentTabs.querySelectorAll(".payment-type-tab").forEach(t => t.classList.toggle("active", t === tab));
   renderOrders();
 });
 

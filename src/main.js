@@ -10,7 +10,24 @@ document.querySelector("#year").textContent = new Date().getFullYear();
 
 let products = [];
 let activeCategory = "All";
+let activeVariantType = "all"; // "all" | "with-colours" | "single-colour"
+let activeColourFilter = "all";
+let activePriceFilter = "all";
+let inStockOnly = false;
+let activeSort = "newest";
 let currentModalProductId = null;
+
+// Storefront UI Elements
+const collectionTabs = document.querySelector("#collection-type-tabs");
+const filterColour = document.querySelector("#filter-colour");
+const filterPrice = document.querySelector("#filter-price");
+const filterInstock = document.querySelector("#filter-instock");
+const sortProducts = document.querySelector("#sort-products");
+const resetFiltersBtn = document.querySelector("#reset-storefront-filters");
+const resultsCountText = document.querySelector("#results-count-text");
+const countAllPieces = document.querySelector("#count-all-pieces");
+const countWithColours = document.querySelector("#count-with-colours");
+const countSingleColour = document.querySelector("#count-single-colour");
 
 function money(paise) {
   return new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 2 }).format((paise || 0) / 100);
@@ -18,6 +35,94 @@ function money(paise) {
 
 function escapeHtml(value = "") {
   return String(value).replace(/[&<>"']/g, ch => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[ch]));
+}
+
+// Compress and resize images for fast client-side storage without quota limits
+function compressImageForStorage(file, maxWidth = 1000, quality = 0.75) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let width = img.width;
+        let height = img.height;
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = () => resolve(e.target.result);
+      img.src = e.target.result;
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
+// Email notification dispatcher to Saloriyaofficial@gmail.com
+function sendOrderEmailNotification({
+  orderId,
+  customerName,
+  phone,
+  address,
+  productName,
+  colour,
+  quantity,
+  totalAmount,
+  paymentMethod,
+  hasScreenshot
+}) {
+  try {
+    const payload = {
+      _subject: `💎 New Order Confirmed #${orderId} - SALORIYA Store`,
+      _template: "table",
+      _captcha: "false",
+      "Order ID": `#${orderId}`,
+      "Customer Name": customerName,
+      "Customer Phone": phone,
+      "Delivery Address": address,
+      "Jewellery Item": productName,
+      "Colour / Variant": colour || "Standard",
+      "Quantity": String(quantity),
+      "Total Amount": `${totalAmount} (Includes ₹50 Transport)`,
+      "Payment Method": paymentMethod === "prepaid" ? "Online Prepaid (UPI Screenshot Uploaded)" : "Cash on Delivery (COD)",
+      "Payment Screenshot": hasScreenshot ? "✅ Attached / Uploaded on Website (View in Admin Portal)" : "N/A (Cash on Delivery)",
+      "Order Status": "CONFIRMED & INVENTORY STOCK DEDUCTED ✓",
+      "Admin Portal": window.location.origin + "/admin.html"
+    };
+
+    fetch("https://formsubmit.co/ajax/Saloriyaofficial@gmail.com", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      body: JSON.stringify(payload)
+    })
+      .then(res => res.json())
+      .then(data => console.log("Email notification sent to Saloriyaofficial@gmail.com:", data))
+      .catch(err => console.warn("Email dispatch notice:", err));
+  } catch (err) {
+    console.warn("Could not dispatch email notification:", err);
+  }
+}
+
+// Local orders storage helper
+function saveLocalOrder(orderObj, itemObj) {
+  try {
+    const list = JSON.parse(localStorage.getItem("saloriya_local_orders") || "[]");
+    orderObj.items = [itemObj];
+    list.unshift(orderObj);
+    localStorage.setItem("saloriya_local_orders", JSON.stringify(list.slice(0, 50)));
+  } catch (e) {
+    console.warn("Could not save to saloriya_local_orders:", e);
+  }
 }
 
 function getColourImage(p, colourName = "", colourIndex = 0) {
@@ -41,11 +146,30 @@ function getColourImage(p, colourName = "", colourIndex = 0) {
 }
 
 function productCard(p) {
+  const hasMultipleColours = Array.isArray(p.colours) && p.colours.length > 1;
   const initialColour = p.colours?.[0] || "";
   const image = getColourImage(p, initialColour, 0);
-  const colours = (p.colours || []).map((c, i) => `<option value="${escapeHtml(c)}" data-index="${i}">${escapeHtml(c)}</option>`).join("");
-  
-  return `<article class="product-card" data-product-id="${p.id}">
+
+  // Variant badge
+  const variantBadge = hasMultipleColours
+    ? `<span class="card-variant-badge multi-colour">✨ ${p.colours.length} Colour Options</span>`
+    : `<span class="card-variant-badge single-look">👑 Signature Single Edition</span>`;
+
+  // Colour swatches if multiple colours
+  const swatchesHtml = hasMultipleColours ? `
+    <div class="card-colour-swatches">
+      <span style="font-size: 10px; color: var(--muted); font-weight: 600;">Colours:</span>
+      ${p.colours.map((c, i) => `
+        <button type="button" class="card-colour-swatch ${i === 0 ? 'active' : ''}" data-product="${p.id}" data-colour="${escapeHtml(c)}" data-index="${i}" title="${escapeHtml(c)}">
+          ${escapeHtml(c)}
+        </button>
+      `).join("")}
+    </div>
+  ` : "";
+
+  const coloursDropdown = (p.colours || []).map((c, i) => `<option value="${escapeHtml(c)}" data-index="${i}">${escapeHtml(c)}</option>`).join("");
+
+  return `<article class="product-card" data-product-id="${p.id}" data-selected-colour="${escapeHtml(initialColour || 'Standard')}">
     <div class="product-image" data-open-preview="${p.id}" title="Click to view details & photos">
       ${image ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(p.name)}" loading="lazy">` : `<div class="image-placeholder"><span>S</span><small>READY TO WEAR</small></div>`}
       ${p.stock <= 0 ? '<span class="stock-tag out-of-stock">Out of stock</span>' : '<span class="stock-tag">Ready to wear</span>'}
@@ -53,19 +177,108 @@ function productCard(p) {
     </div>
     <div class="product-info" data-open-preview="${p.id}">
       <div>
+        ${variantBadge}
         <p class="product-category">${escapeHtml(p.category || "GOLD COVERING")}</p>
         <h3 class="product-title-link">${escapeHtml(p.name)}</h3>
       </div>
       <strong>${money(p.price_paise)}</strong>
     </div>
     ${p.description ? `<p class="product-description" data-open-preview="${p.id}">${escapeHtml(p.description)}</p>` : ""}
-    ${p.colours?.length ? `<label class="colour-label">Choose a colour<select class="colour-select" data-product="${p.id}">${colours}</select></label>` : ""}
-    <button class="add-button" data-add="${p.id}" ${p.stock <= 0 ? "disabled" : ""}>${p.stock <= 0 ? "Currently unavailable" : "Order on WhatsApp ↗"}</button>
+    ${swatchesHtml}
+    ${p.colours?.length ? `<label class="colour-label" style="display:none;"><select class="colour-select" data-product="${p.id}">${coloursDropdown}</select></label>` : ""}
+    <div class="card-action-row">
+      <button type="button" class="card-buy-btn" data-buy="${p.id}" ${p.stock <= 0 ? "disabled" : ""}>
+        <span>${p.stock <= 0 ? "Out of Stock" : "Order Now 🛍️"}</span>
+      </button>
+      <button type="button" class="card-wa-btn" data-add="${p.id}" ${p.stock <= 0 ? "disabled" : ""} title="Order on WhatsApp">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
+          <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91C2.13 13.66 2.59 15.36 3.45 16.86L2.05 22L7.3 20.62C8.75 21.41 10.38 21.83 12.04 21.83C17.5 21.83 21.95 17.38 21.95 11.92C21.95 9.27 20.92 6.78 19.05 4.91C17.18 3.03 14.69 2 12.04 2ZM12.05 20.16C10.57 20.16 9.12 19.76 7.85 19.01L7.55 18.83L4.43 19.65L5.26 16.61L5.06 16.29C4.24 14.99 3.8 13.47 3.8 11.91C3.8 7.37 7.5 3.67 12.05 3.67C14.25 3.67 16.31 4.53 17.87 6.09C19.42 7.65 20.28 9.72 20.28 11.92C20.28 16.46 16.58 20.16 12.05 20.16ZM16.57 14.33C16.32 14.2 15.1 13.6 14.87 13.52C14.64 13.43 14.48 13.39 14.31 13.64C14.15 13.88 13.68 14.44 13.53 14.6C13.39 14.77 13.25 14.79 13 14.66C12.75 14.54 11.95 14.28 11 13.43C10.26 12.77 9.76 11.95 9.61 11.7C9.47 11.45 9.6 11.32 9.72 11.2C9.83 11.09 9.97 10.91 10.1 10.76C10.22 10.61 10.26 10.5 10.34 10.34C10.42 10.17 10.38 10.03 10.32 9.91C10.26 9.78 9.76 8.56 9.56 8.06C9.36 7.58 9.16 7.64 9.01 7.63C8.87 7.62 8.71 7.62 8.54 7.62C8.38 7.62 8.11 7.68 7.89 7.93C7.66 8.17 7.03 8.76 7.03 9.97C7.03 11.18 7.91 12.35 8.03 12.51C8.16 12.68 9.77 15.16 12.24 16.22C12.82 16.47 13.28 16.63 13.64 16.74C14.23 16.93 14.76 16.9 15.19 16.84C15.67 16.77 16.66 16.24 16.87 15.66C17.07 15.07 17.07 14.57 17.01 14.47C16.95 14.37 16.81 14.45 16.57 14.33Z"/>
+        </svg>
+        <span>WhatsApp ↗</span>
+      </button>
+    </div>
   </article>`;
 }
 
+function populateColourDropdown() {
+  if (!filterColour) return;
+  const colourSet = new Set();
+  products.forEach(p => {
+    if (Array.isArray(p.colours)) {
+      p.colours.forEach(c => {
+        const trimmed = c.trim();
+        if (trimmed) colourSet.add(trimmed);
+      });
+    }
+  });
+
+  const sortedColours = Array.from(colourSet).sort();
+  filterColour.innerHTML = `
+    <option value="all">All Colours</option>
+    ${sortedColours.map(c => `<option value="${escapeHtml(c)}" ${activeColourFilter === c ? 'selected' : ''}>${escapeHtml(c)}</option>`).join("")}
+  `;
+}
+
 function render() {
-  const shown = products.filter(p => activeCategory === "All" || p.category === activeCategory);
+  const totalCount = products.length;
+
+  // 1. Filter
+  let shown = products.filter(p => {
+    // Category filter
+    if (activeCategory !== "All" && p.category !== activeCategory) return false;
+
+    // Variant Type filter (No colours separate vs With colour options separate)
+    const hasMultipleColours = Array.isArray(p.colours) && p.colours.length > 1;
+    if (activeVariantType === "with-colours" && !hasMultipleColours) return false;
+    if (activeVariantType === "single-colour" && hasMultipleColours) return false;
+
+    // Colour filter
+    if (activeColourFilter !== "all") {
+      if (!Array.isArray(p.colours) || !p.colours.some(c => c.toLowerCase().trim() === activeColourFilter.toLowerCase().trim())) {
+        return false;
+      }
+    }
+
+    // Price filter
+    if (activePriceFilter === "under-50" && p.price_paise >= 5000) return false;
+    if (activePriceFilter === "under-100" && p.price_paise >= 10000) return false;
+    if (activePriceFilter === "under-399" && p.price_paise >= 39900) return false;
+    if (activePriceFilter === "400-699" && (p.price_paise < 40000 || p.price_paise > 69900)) return false;
+    if (activePriceFilter === "700-999" && (p.price_paise < 70000 || p.price_paise > 99900)) return false;
+    if (activePriceFilter === "1000-plus" && p.price_paise < 100000) return false;
+
+    // Stock filter
+    if (inStockOnly && p.stock <= 0) return false;
+
+    return true;
+  });
+
+  // 2. Sort
+  shown.sort((a, b) => {
+    if (activeSort === "newest") return new Date(b.created_at) - new Date(a.created_at);
+    if (activeSort === "price-asc") return (a.price_paise || 0) - (b.price_paise || 0);
+    if (activeSort === "price-desc") return (b.price_paise || 0) - (a.price_paise || 0);
+    if (activeSort === "name-asc") return (a.name || "").localeCompare(b.name || "");
+    return 0;
+  });
+
+  // When viewing "All Creations" with default sort and no narrow filter,
+  // arrange so Multi-Colour options and Single Looks are sequenced in distinct harmony!
+  if (activeVariantType === "all" && activeSort === "newest" && activeColourFilter === "all" && activePriceFilter === "all") {
+    const multiColoursList = shown.filter(p => Array.isArray(p.colours) && p.colours.length > 1);
+    const singleColourList = shown.filter(p => !Array.isArray(p.colours) || p.colours.length <= 1);
+    shown = [...multiColoursList, ...singleColourList];
+  }
+
+  // Update UI Results Count & Reset Button
+  const hasActiveFilters = activeCategory !== "All" || activeVariantType !== "all" || activeColourFilter !== "all" || activePriceFilter !== "all" || inStockOnly;
+  if (resetFiltersBtn) {
+    resetFiltersBtn.hidden = !hasActiveFilters;
+  }
+  if (resultsCountText) {
+    resultsCountText.innerHTML = `Displaying <strong>${shown.length}</strong> of ${totalCount} pieces`;
+  }
+
   grid.innerHTML = shown.map(productCard).join("");
   empty.hidden = shown.length > 0;
 }
@@ -81,6 +294,7 @@ async function loadProducts() {
     return;
   }
   products = data || [];
+  populateColourDropdown();
   render();
 
   // Check if page opened with product hash (e.g. #product-<id>)
@@ -92,7 +306,8 @@ async function loadProducts() {
   }
 }
 
-filters.addEventListener("click", e => {
+// Category filter pills
+filters?.addEventListener("click", e => {
   const btn = e.target.closest("[data-category]");
   if (!btn) return;
   activeCategory = btn.dataset.category;
@@ -100,65 +315,132 @@ filters.addEventListener("click", e => {
   render();
 });
 
-grid.addEventListener("change", e => {
-  if (e.target.matches(".colour-select")) {
-    const select = e.target;
-    select.dataset.selectedColour = select.value;
-    const card = select.closest(".product-card");
-    if (!card) return;
-
-    const p = products.find(item => item.id === select.dataset.product);
-    if (!p) return;
-
-    const targetImage = getColourImage(p, select.value, select.selectedIndex);
-    if (!targetImage) return;
-
-    let img = card.querySelector(".product-image img");
-    if (!img) {
-      const container = card.querySelector(".product-image");
-      const placeholder = container?.querySelector(".image-placeholder");
-      if (placeholder) placeholder.remove();
-      img = document.createElement("img");
-      img.alt = p.name;
-      img.loading = "lazy";
-      container?.prepend(img);
-    }
-
-    if (img && img.src !== targetImage) {
-      img.style.transition = "opacity 0.25s ease";
-      img.style.opacity = "0.4";
-      img.src = targetImage;
-      img.onload = () => { img.style.opacity = "1"; };
-      setTimeout(() => { img.style.opacity = "1"; }, 300);
-    }
-  }
+// Collection variant type tabs (Separates with colours vs without colours)
+collectionTabs?.addEventListener("click", e => {
+  const btn = e.target.closest("[data-variant-type]");
+  if (!btn) return;
+  activeVariantType = btn.dataset.variantType;
+  collectionTabs.querySelectorAll(".collection-tab").forEach(b => b.classList.toggle("active", b === btn));
+  render();
 });
 
-// Grid click: handles WhatsApp quick buy OR opens full Flipkart/Amazon style preview modal
+// Refine & Sort Toolbar listeners
+filterColour?.addEventListener("change", e => {
+  activeColourFilter = e.target.value;
+  render();
+});
+
+filterPrice?.addEventListener("change", e => {
+  activePriceFilter = e.target.value;
+  render();
+});
+
+filterInstock?.addEventListener("change", e => {
+  inStockOnly = e.target.checked;
+  render();
+});
+
+sortProducts?.addEventListener("change", e => {
+  activeSort = e.target.value;
+  render();
+});
+
+resetFiltersBtn?.addEventListener("click", () => {
+  activeCategory = "All";
+  activeVariantType = "all";
+  activeColourFilter = "all";
+  activePriceFilter = "all";
+  inStockOnly = false;
+  activeSort = "newest";
+
+  if (filters) {
+    filters.querySelectorAll(".filter").forEach(b => b.classList.toggle("active", b.dataset.category === "All"));
+  }
+  if (collectionTabs) {
+    collectionTabs.querySelectorAll(".collection-tab").forEach(b => b.classList.toggle("active", b.dataset.variantType === "all"));
+  }
+  if (filterColour) filterColour.value = "all";
+  if (filterPrice) filterPrice.value = "all";
+  if (filterInstock) filterInstock.checked = false;
+  if (sortProducts) sortProducts.value = "newest";
+
+  render();
+});
+
+// Grid click: handles Buy Now, WhatsApp quick buy, colour swatch clicks, OR opens full modal
 grid.addEventListener("click", e => {
-  // If clicked WhatsApp buy button on the card:
+  // 1. Swatch click on card: changes product image & sets active colour
+  const swatch = e.target.closest(".card-colour-swatch");
+  if (swatch) {
+    e.stopPropagation();
+    const card = swatch.closest(".product-card");
+    if (!card) return;
+    const p = products.find(x => x.id === swatch.dataset.product);
+    if (!p) return;
+
+    const chosenColour = swatch.dataset.colour;
+    const colourIndex = Number(swatch.dataset.index);
+
+    // Update active swatch
+    card.querySelectorAll(".card-colour-swatch").forEach(s => s.classList.remove("active"));
+    swatch.classList.add("active");
+
+    // Update card dataset and hidden select
+    card.dataset.selectedColour = chosenColour;
+    const select = card.querySelector(".colour-select");
+    if (select) {
+      select.value = chosenColour;
+      select.dataset.selectedColour = chosenColour;
+    }
+
+    // Switch image smoothly
+    const targetImage = getColourImage(p, chosenColour, colourIndex);
+    if (targetImage) {
+      const img = card.querySelector(".product-image img");
+      if (img && img.src !== targetImage) {
+        img.style.transition = "opacity 0.25s ease";
+        img.style.opacity = "0.4";
+        img.src = targetImage;
+        img.onload = () => { img.style.opacity = "1"; };
+        setTimeout(() => { img.style.opacity = "1"; }, 300);
+      }
+    }
+    return;
+  }
+
+  // 2. Buy Now button on the card:
+  const buyBtn = e.target.closest("[data-buy]");
+  if (buyBtn) {
+    const p = products.find(item => item.id === buyBtn.dataset.buy);
+    if (!p) return;
+    const card = buyBtn.closest(".product-card");
+    const colour = card?.dataset?.selectedColour || p.colours?.[0] || "Standard";
+    openCheckoutModal(p.id, colour);
+    return;
+  }
+
+  // 3. WhatsApp buy button on the card:
   const addBtn = e.target.closest("[data-add]");
   if (addBtn) {
     const p = products.find(item => item.id === addBtn.dataset.add);
     if (!p) return;
-    const select = grid.querySelector(`.colour-select[data-product="${CSS.escape(p.id)}"]`);
-    const colour = select?.value || p.colours?.[0] || "Standard";
+    const card = addBtn.closest(".product-card");
+    const colour = card?.dataset?.selectedColour || p.colours?.[0] || "Standard";
     const categoryStr = p.category ? ` [${p.category}]` : "";
     const message = encodeURIComponent(`Hello SALORIYA! I'd like to order:\nProduct: ${p.name}${categoryStr}\nColour: ${colour}\nPrice shown: ${money(p.price_paise)}\nPlease confirm availability and delivery details.`);
     window.open(`https://wa.me/918680824598?text=${message}`, "_blank", "noopener,noreferrer");
     return;
   }
 
-  // If clicking inside the colour select dropdown or label, do not open modal
+  // If clicking inside colour select or label, do not open modal
   if (e.target.closest(".colour-select") || e.target.closest(".colour-label")) {
     return;
   }
 
-  // If clicking on image, title, card or quick view badge: open Amazon / Flipkart style preview modal
+  // 4. If clicking on image, title, card or quick view badge: open Amazon / Flipkart style preview modal
   const card = e.target.closest(".product-card");
   if (card) {
-    const select = card.querySelector(".colour-select");
-    const currentColour = select?.value || "";
+    const currentColour = card.dataset.selectedColour || "";
     openProductModal(card.dataset.productId, currentColour);
   }
 });
@@ -184,11 +466,11 @@ function openProductModal(productId, defaultColour = "") {
     return `<button type="button" class="modal-colour-pill ${isSelected ? 'active' : ''}" data-colour="${escapeHtml(c)}" data-index="${i}">${escapeHtml(c)}</button>`;
   }).join("");
 
-  // Thumbnail images markup
+  // Thumbnail images markup with index for two-way synchronization
   const thumbsHtml = allImages.length > 1 ? allImages.map((url, i) => {
     const isActive = url === activeImage;
-    return `<button type="button" class="modal-thumb ${isActive ? 'active' : ''}" data-thumb-url="${escapeHtml(url)}" aria-label="View angle ${i+1}">
-      <img src="${escapeHtml(url)}" alt="${escapeHtml(p.name)} - angle ${i+1}" />
+    return `<button type="button" class="modal-thumb ${isActive ? 'active' : ''}" data-thumb-url="${escapeHtml(url)}" data-thumb-index="${i}" aria-label="View photo ${i+1}">
+      <img src="${escapeHtml(url)}" alt="${escapeHtml(p.name)} - photo ${i+1}" />
     </button>`;
   }).join("") : "";
 
@@ -240,11 +522,11 @@ function openProductModal(productId, defaultColour = "") {
         <div class="modal-highlights">
           <h4 class="modal-section-title">Product Highlights</h4>
           <ul class="modal-spec-list">
-            <li><strong>Craft & Style:</strong> Premium 1-Gram Gold Covering & Readymade Jewellery</li>
+            <li><strong>Craft &amp; Style:</strong> Premium 1-Gram Gold Covering &amp; Readymade Jewellery</li>
             <li><strong>Coating:</strong> Long-lasting micro-gold finish with protective tarnish barrier</li>
-            <li><strong>Skin Comfort:</strong> 100% Nickel-free, lead-free & hypoallergenic daily wear</li>
+            <li><strong>Skin Comfort:</strong> 100% Nickel-free, lead-free &amp; hypoallergenic daily wear</li>
             <li><strong>Packaging:</strong> Safely secured in protective jewellery-grade box</li>
-            <li><strong>Occasion:</strong> Perfect for festive, wedding, temple & everyday elegance</li>
+            <li><strong>Occasion:</strong> Perfect for festive, wedding, temple &amp; everyday elegance</li>
           </ul>
         </div>
 
@@ -256,16 +538,24 @@ function openProductModal(productId, defaultColour = "") {
 
         <!-- Order & Enquiries Actions -->
         <div class="modal-actions">
-          <button type="button" class="modal-order-btn" id="modal-order-button" ${p.stock <= 0 ? "disabled" : ""}>
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path>
+          <button type="button" class="modal-buy-direct-btn" id="modal-buy-button" ${p.stock <= 0 ? "disabled" : ""}>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <path d="M16 10a4 4 0 0 1-8 0"></path>
             </svg>
-            ${p.stock <= 0 ? "Currently Unavailable" : "Order on WhatsApp ↗"}
+            <span>${p.stock <= 0 ? "Unavailable" : "Order Now 🛍️"}</span>
           </button>
-          <button type="button" class="modal-query-link" id="modal-query-btn">
-            Need custom sizing or have questions? Chat with our stylist ↗
+          <button type="button" class="modal-wa-btn" id="modal-order-button" ${p.stock <= 0 ? "disabled" : ""}>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+              <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91C2.13 13.66 2.59 15.36 3.45 16.86L2.05 22L7.3 20.62C8.75 21.41 10.38 21.83 12.04 21.83C17.5 21.83 21.95 17.38 21.95 11.92C21.95 9.27 20.92 6.78 19.05 4.91C17.18 3.03 14.69 2 12.04 2ZM12.05 20.16C10.57 20.16 9.12 19.76 7.85 19.01L7.55 18.83L4.43 19.65L5.26 16.61L5.06 16.29C4.24 14.99 3.8 13.47 3.8 11.91C3.8 7.37 7.5 3.67 12.05 3.67C14.25 3.67 16.31 4.53 17.87 6.09C19.42 7.65 20.28 9.72 20.28 11.92C20.28 16.46 16.58 20.16 12.05 20.16ZM16.57 14.33C16.32 14.2 15.1 13.6 14.87 13.52C14.64 13.43 14.48 13.39 14.31 13.64C14.15 13.88 13.68 14.44 13.53 14.6C13.39 14.77 13.25 14.79 13 14.66C12.75 14.54 11.95 14.28 11 13.43C10.26 12.77 9.76 11.95 9.61 11.7C9.47 11.45 9.6 11.32 9.72 11.2C9.83 11.09 9.97 10.91 10.1 10.76C10.22 10.61 10.26 10.5 10.34 10.34C10.42 10.17 10.38 10.03 10.32 9.91C10.26 9.78 9.76 8.56 9.56 8.06C9.36 7.58 9.16 7.64 9.01 7.63C8.87 7.62 8.71 7.62 8.54 7.62C8.38 7.62 8.11 7.68 7.89 7.93C7.66 8.17 7.03 8.76 7.03 9.97C7.03 11.18 7.91 12.35 8.03 12.51C8.16 12.68 9.77 15.16 12.24 16.22C12.82 16.47 13.28 16.63 13.64 16.74C14.23 16.93 14.76 16.9 15.19 16.84C15.67 16.77 16.66 16.24 16.87 15.66C17.07 15.07 17.07 14.57 17.01 14.47C16.95 14.37 16.81 14.45 16.57 14.33Z"/>
+            </svg>
+            <span>WhatsApp ↗</span>
           </button>
         </div>
+        <button type="button" class="modal-query-link" id="modal-query-btn">
+          Need custom sizing or have questions? Chat with our stylist ↗
+        </button>
 
         <!-- Trust Bar -->
         <div class="modal-trust-bar">
@@ -294,25 +584,74 @@ function openProductModal(productId, defaultColour = "") {
     });
   }
 
-  // Setup Thumbnail Clicks
+  // Setup Thumbnail Clicks with TWO-WAY COLOUR HIGHLIGHTING
   const thumbsContainer = modalContent.querySelector("#modal-thumbs");
+  const colourPillsContainer = modalContent.querySelector("#modal-colour-pills");
+  const chosenColourLabel = modalContent.querySelector("#modal-chosen-colour");
+
   if (thumbsContainer) {
     thumbsContainer.addEventListener("click", e => {
       const btn = e.target.closest("[data-thumb-url]");
       if (!btn || !mainImg) return;
+      const clickedUrl = btn.dataset.thumbUrl;
+      const thumbIndex = Number(btn.dataset.thumbIndex);
+
+      // 1. Highlight active thumbnail
       thumbsContainer.querySelectorAll(".modal-thumb").forEach(t => t.classList.remove("active"));
       btn.classList.add("active");
+
+      // 2. Smoothly switch main photo
       mainImg.style.transition = "opacity 0.2s ease";
       mainImg.style.opacity = "0.4";
-      mainImg.src = btn.dataset.thumbUrl;
+      mainImg.src = clickedUrl;
       mainImg.onload = () => { mainImg.style.opacity = "1"; };
       setTimeout(() => { mainImg.style.opacity = "1"; }, 250);
+
+      // 3. TWO-WAY SYNC: Determine matching colour for this image and update highlight & name!
+      if (p.colours && p.colours.length > 0) {
+        let matchedColour = null;
+        const decodedUrl = decodeURIComponent(clickedUrl).toLowerCase();
+
+        // 3a. Match URL substring with colour name
+        for (const c of p.colours) {
+          if (decodedUrl.includes(c.toLowerCase().trim())) {
+            matchedColour = c;
+            break;
+          }
+        }
+
+        // 3b. Fallback to index mapping (1st photo for 1st colour, etc.)
+        if (!matchedColour && !Number.isNaN(thumbIndex) && thumbIndex >= 0 && thumbIndex < p.colours.length) {
+          matchedColour = p.colours[thumbIndex];
+        }
+
+        // 3c. Update the colour selection and highlight in the modal!
+        if (matchedColour) {
+          selectedColour = matchedColour;
+          if (chosenColourLabel) {
+            chosenColourLabel.textContent = selectedColour;
+          }
+          if (colourPillsContainer) {
+            colourPillsContainer.querySelectorAll(".modal-colour-pill").forEach(pill => {
+              const isMatch = pill.dataset.colour.toLowerCase().trim() === selectedColour.toLowerCase().trim();
+              pill.classList.toggle("active", isMatch);
+            });
+          }
+
+          // Also sync storefront card in background
+          const card = grid.querySelector(`.product-card[data-product-id="${CSS.escape(p.id)}"]`);
+          if (card) {
+            card.dataset.selectedColour = selectedColour;
+            card.querySelectorAll(".card-colour-swatch").forEach(sw => {
+              sw.classList.toggle("active", sw.dataset.colour.toLowerCase().trim() === selectedColour.toLowerCase().trim());
+            });
+          }
+        }
+      }
     });
   }
 
   // Setup Colour Variant Clicks (Switches colour & matching image)
-  const colourPillsContainer = modalContent.querySelector("#modal-colour-pills");
-  const chosenColourLabel = modalContent.querySelector("#modal-chosen-colour");
   if (colourPillsContainer) {
     colourPillsContainer.addEventListener("click", e => {
       const pill = e.target.closest("[data-colour]");
@@ -342,12 +681,20 @@ function openProductModal(productId, defaultColour = "") {
       // Also sync the storefront card dropdown in background
       const card = grid.querySelector(`.product-card[data-product-id="${CSS.escape(p.id)}"]`);
       if (card) {
-        const select = card.querySelector(".colour-select");
-        if (select && select.value !== selectedColour) {
-          select.value = selectedColour;
-          select.dispatchEvent(new Event("change", { bubbles: true }));
-        }
+        card.dataset.selectedColour = selectedColour;
+        card.querySelectorAll(".card-colour-swatch").forEach(sw => {
+          sw.classList.toggle("active", sw.dataset.colour.toLowerCase().trim() === selectedColour.toLowerCase().trim());
+        });
       }
+    });
+  }
+
+  // Setup Direct Checkout Buy Now Button from Modal
+  const buyDirectBtn = modalContent.querySelector("#modal-buy-button");
+  if (buyDirectBtn) {
+    buyDirectBtn.addEventListener("click", () => {
+      closeProductModal();
+      openCheckoutModal(productId, selectedColour);
     });
   }
 
@@ -384,6 +731,670 @@ function closeProductModal() {
   document.body.classList.remove("modal-open");
   currentModalProductId = null;
 }
+
+/* ==========================================================================
+   CUSTOMER EXPRESS CHECKOUT MODAL & ORDER PLACEMENT
+   ========================================================================== */
+
+const checkoutModal = document.querySelector("#checkout-modal");
+const checkoutContent = document.querySelector("#checkout-modal-content");
+
+function openCheckoutModal(productId, initialColour = "") {
+  const p = products.find(x => x.id === productId);
+  if (!p || !checkoutModal || !checkoutContent) return;
+
+  let chosenColour = initialColour || p.colours?.[0] || "Standard";
+  let qty = 1;
+  const maxStock = Math.max(1, p.stock || 1);
+  const imgUrl = getColourImage(p, chosenColour, 0) || p.image_urls?.[0] || "";
+
+  const TRANSPORT_FEE_PAISE = 5000; // Flat ₹50.00 Delivery & Transport Fee
+
+  function renderCheckout() {
+    const subtotalPaise = p.price_paise * qty;
+    const totalPaise = subtotalPaise + TRANSPORT_FEE_PAISE;
+
+    checkoutContent.innerHTML = `
+      <div class="checkout-header">
+        <p class="eyebrow">EXPRESS CHECKOUT</p>
+        <h3>Complete Your Order</h3>
+      </div>
+
+      <div class="checkout-product-summary">
+        <div class="checkout-thumb">
+          ${imgUrl ? `<img src="${escapeHtml(imgUrl)}" alt="${escapeHtml(p.name)}" />` : "S"}
+        </div>
+        <div class="checkout-product-details">
+          <span class="checkout-product-title">${escapeHtml(p.name)}</span>
+          <span class="checkout-product-variant">Colour: <strong>${escapeHtml(chosenColour)}</strong></span>
+          <span class="modal-price" style="font-size:16px;">${money(p.price_paise)} each</span>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:4px;">
+            <label style="font-size:11px;color:var(--muted);font-weight:600;">Quantity:</label>
+            <div class="checkout-qty-stepper">
+              <button type="button" id="chk-qty-minus" ${qty <= 1 ? "disabled" : ""}>−</button>
+              <span id="chk-qty-val">${qty}</span>
+              <button type="button" id="chk-qty-plus" ${qty >= maxStock ? "disabled" : ""}>+</button>
+            </div>
+            ${p.stock <= 3 ? `<small style="color:#d97706;font-size:10px;">Only ${p.stock} left in stock</small>` : ""}
+          </div>
+        </div>
+      </div>
+
+      <form id="storefront-checkout-form" class="admin-form" style="display:flex;flex-direction:column;gap:12px;">
+        <div class="form-row">
+          <label>Full Name *
+            <input name="customerName" required placeholder="e.g. Ananya Krishnan" />
+          </label>
+          <label>Mobile Phone *
+            <input name="phone" required placeholder="10-digit number (e.g. 9876543210)" pattern="[0-9]{10}" title="Please enter a 10-digit mobile number" />
+          </label>
+        </div>
+
+        <label>Shipping / Delivery Address *
+          <textarea name="street" rows="2" required placeholder="House/Flat No, Street, Landmark"></textarea>
+        </label>
+
+        <div class="form-row" style="grid-template-columns:1.2fr 1fr 1fr;">
+          <label>City *
+            <input name="city" required placeholder="Chennai" />
+          </label>
+          <label>State *
+            <input name="state" required value="Tamil Nadu" />
+          </label>
+          <label>PIN Code *
+            <input name="pincode" required placeholder="600001" maxlength="6" pattern="[0-9]{6}" />
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label>Payment Method
+            <select name="paymentMethod" id="checkout-payment-method" required>
+              <option value="cod">Cash on Delivery (COD)</option>
+              <option value="prepaid">Instant Online Payment (UPI / QR / GPay / PhonePe)</option>
+            </select>
+          </label>
+          <div style="display:flex;flex-direction:column;justify-content:center;font-size:11px;color:var(--muted);padding-top:14px;" id="checkout-payment-hint">
+            <span>✓ Pay securely upon courier delivery</span>
+            <span>✓ Verified boutique tamper-proof packaging</span>
+          </div>
+        </div>
+
+        <div class="checkout-price-breakdown">
+          <div class="checkout-line">
+            <span>Item Subtotal (${qty} piece${qty > 1 ? 's' : ''}):</span>
+            <strong>${money(subtotalPaise)}</strong>
+          </div>
+          <div class="checkout-line">
+            <span>Insured Courier &amp; Transport Fee:</span>
+            <strong style="color:var(--wine-dark);font-weight:700;">+ ₹50.00</strong>
+          </div>
+          <div class="checkout-total-line">
+            <span>Total Payable:</span>
+            <span>${money(totalPaise)}</span>
+          </div>
+        </div>
+
+        <button type="submit" id="checkout-submit-btn" class="button button-gold" style="padding:14px;font-size:13px;width:100%;letter-spacing:0.5px;">
+          Confirm &amp; Place Order (${money(totalPaise)}) ↗
+        </button>
+
+        <p class="form-message" id="checkout-message" role="status"></p>
+      </form>
+    `;
+
+    // Dynamic payment method label/hint update
+    const paymentMethodSelect = checkoutContent.querySelector("#checkout-payment-method");
+    const paymentHint = checkoutContent.querySelector("#checkout-payment-hint");
+    const submitBtn = checkoutContent.querySelector("#checkout-submit-btn");
+
+    paymentMethodSelect?.addEventListener("change", () => {
+      if (paymentMethodSelect.value === "prepaid") {
+        paymentHint.innerHTML = `
+          <span style="color:var(--wine);font-weight:600;">⚡ Instant Online Payment: Scan UPI QR or Pay via GPay/PhonePe</span>
+          <span>✓ Order placed ONLY after authentic UTR &amp; payment verification</span>
+        `;
+        submitBtn.textContent = `Proceed to Online Payment (${money(totalPaise)}) 💳`;
+      } else {
+        paymentHint.innerHTML = `
+          <span>✓ Pay securely upon courier delivery</span>
+          <span>✓ Verified boutique tamper-proof packaging</span>
+        `;
+        submitBtn.textContent = `Confirm &amp; Place Order (${money(totalPaise)}) ↗`;
+      }
+    });
+
+    // Bind quantity buttons
+    checkoutContent.querySelector("#chk-qty-minus")?.addEventListener("click", () => {
+      if (qty > 1) {
+        qty--;
+        renderCheckout();
+      }
+    });
+
+    checkoutContent.querySelector("#chk-qty-plus")?.addEventListener("click", () => {
+      if (qty < maxStock) {
+        qty++;
+        renderCheckout();
+      }
+    });
+
+    // Form submission
+    const form = checkoutContent.querySelector("#storefront-checkout-form");
+    const msg = checkoutContent.querySelector("#checkout-message");
+
+    form?.addEventListener("submit", async e => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      const customerName = String(fd.get("customerName") || "").trim();
+      const phone = String(fd.get("phone") || "").trim();
+      const street = String(fd.get("street") || "").trim();
+      const city = String(fd.get("city") || "").trim();
+      const state = String(fd.get("state") || "Tamil Nadu").trim();
+      const pincode = String(fd.get("pincode") || "").trim();
+      const paymentMethod = String(fd.get("paymentMethod") || "cod");
+
+      const orderData = { customerName, phone, street, city, state, pincode, subtotalPaise, totalPaise, qty, chosenColour };
+
+      // IF ONLINE / PREPAID: DO NOT PLACE ORDER YET!
+      // Customer must complete payment and enter genuine 12-digit UTR first!
+      if (paymentMethod === "prepaid") {
+        showOnlinePaymentPortal(orderData);
+        return;
+      }
+
+      // COD: Place order directly with pending status
+      msg.textContent = "Placing your COD order…";
+      msg.classList.remove("error");
+
+      try {
+        const { data: newOrder, error: orderErr } = await supabase
+          .from("orders")
+          .insert({
+            customer_name: customerName,
+            phone,
+            address: { street, city, state, pincode, transport_fee_paise: TRANSPORT_FEE_PAISE },
+            payment_method: "cod",
+            payment_status: "pending",
+            order_status: "pending",
+            total_paise: totalPaise
+          })
+          .select()
+          .single();
+
+        const orderIdKey = newOrder?.id || `cod_${Date.now()}`;
+        const shortId = orderIdKey.slice(0, 8).toUpperCase();
+
+        saveLocalOrder({
+          id: orderIdKey,
+          customer_name: customerName,
+          phone,
+          address: { street, city, state, pincode, transport_fee_paise: TRANSPORT_FEE_PAISE },
+          payment_method: "cod",
+          payment_status: "pending",
+          order_status: "pending",
+          total_paise: totalPaise,
+          created_at: new Date().toISOString()
+        }, {
+          order_id: orderIdKey,
+          product_id: p.id,
+          product_name: p.name,
+          colour: chosenColour,
+          quantity: qty,
+          unit_price_paise: p.price_paise
+        });
+
+        // Dispatch Email Notification to Saloriyaofficial@gmail.com
+        sendOrderEmailNotification({
+          orderId: shortId,
+          customerName,
+          phone,
+          address: `${street}, ${city}, ${state} - ${pincode}`,
+          productName: p.name,
+          colour: chosenColour,
+          quantity: qty,
+          totalAmount: money(totalPaise),
+          paymentMethod: "cod",
+          hasScreenshot: false
+        });
+
+        if (orderErr) {
+          console.warn("Direct order insert blocked by RLS:", orderErr.message);
+          const waMsg = encodeURIComponent(`Hello SALORIYA! I'd like to place an order from your website:\nProduct: ${p.name}\nColour: ${chosenColour}\nQty: ${qty}\nItem Total: ${money(subtotalPaise)}\nTransport/Courier: ₹50.00\nTotal Payable: ${money(totalPaise)}\nCustomer: ${customerName}\nPhone: ${phone}\nAddress: ${street}, ${city}, ${state} - ${pincode}`);
+          window.open(`https://wa.me/918680824598?text=${waMsg}`, "_blank");
+          showOrderSuccessScreen(orderIdKey, p, chosenColour, qty, totalPaise, customerName, phone, `${street}, ${city}, ${state} - ${pincode}`, "cod", "pending");
+          return;
+        }
+
+        // Insert line item if newOrder was created
+        if (newOrder?.id) {
+          try {
+            await supabase
+              .from("order_items")
+              .insert({
+                order_id: newOrder.id,
+                product_id: p.id,
+                product_name: p.name,
+                colour: chosenColour,
+                quantity: qty,
+                unit_price_paise: p.price_paise
+              });
+          } catch (itemErr) {
+            console.warn("order_items insert warning:", itemErr);
+          }
+        }
+
+        showOrderSuccessScreen(orderIdKey, p, chosenColour, qty, totalPaise, customerName, phone, `${street}, ${city}, ${state} - ${pincode}`, "cod", "pending");
+      } catch (err) {
+        console.error("Order error:", err);
+        msg.textContent = "Something went wrong. Please order via WhatsApp.";
+        msg.classList.add("error");
+      }
+    });
+  }
+
+  // Luxury Online Payment Gateway Interface
+  function showOnlinePaymentPortal(orderData) {
+    const amountInRupees = (orderData.totalPaise / 100).toFixed(2);
+    const upiId = "gambusaigowtham-3@oksbi";
+    const upiPayUrl = `upi://pay?pa=${upiId}&pn=SALORIYA&am=${amountInRupees}&cu=INR&tn=${encodeURIComponent('SALORIYA Jewellery Order')}`;
+    const qrCodeUrl = "/upi-qr.jpg";
+
+    checkoutContent.innerHTML = `
+      <div class="online-payment-portal">
+        <div class="payment-header">
+          <p class="eyebrow" style="color:var(--wine);">SALORIYA INSTANT SECURE UPI</p>
+          <h3 style="font-family:'Playfair Display',serif;font-size:24px;margin:4px 0 8px;">Scan &amp; Pay to Place Order</h3>
+          <p style="font-size:12px;color:var(--muted);margin:0 0 16px;">
+            Please complete payment in your UPI app and submit your <strong>12-digit UTR reference number</strong>. Orders are accepted only after payment is verified.
+          </p>
+        </div>
+
+        <div class="payment-amount-card">
+          <span>Total Payable Amount</span>
+          <strong class="payment-amount-val">${money(orderData.totalPaise)}</strong>
+          <small>Item: ${money(orderData.subtotalPaise)} + Transport &amp; Packaging: ₹50.00</small>
+        </div>
+
+        <div class="payment-qr-wrap" style="display:flex;flex-direction:column;align-items:center;margin:14px 0;">
+          <div style="background:#ffffff;padding:8px;border-radius:12px;border:1.5px solid var(--gold);box-shadow:0 4px 16px rgba(134,30,56,0.12);display:inline-block;">
+            <img src="${qrCodeUrl}" alt="SALORIYA Google Pay QR Code" class="payment-qr-img" width="220" height="220" style="display:block;border-radius:8px;object-fit:contain;background:#202124;" />
+          </div>
+          <div class="payment-qr-badge" style="margin-top:8px;">✦ Scan with Google Pay / PhonePe / Paytm / Any UPI App</div>
+        </div>
+
+        <div class="payment-upi-details">
+          <div class="payment-upi-id-box">
+            <span class="upi-label">UPI ID:</span>
+            <code class="upi-code" id="upi-id-text">${upiId}</code>
+            <button type="button" class="btn-copy-upi" id="btn-copy-upi" title="Copy UPI ID">Copy</button>
+          </div>
+          
+          <div class="payment-app-links">
+            <a href="${upiPayUrl}" class="payment-app-btn">Pay directly via UPI App on Mobile ↗</a>
+          </div>
+        </div>
+
+        <div class="payment-verify-form">
+          <div class="payment-screenshot-card" style="background:#fff7f3;border:1.5px dashed var(--wine);border-radius:10px;padding:16px;text-align:center;margin-bottom:14px;">
+            <label style="display:block;font-size:12px;font-weight:700;color:var(--wine);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">
+              📸 Upload Payment Screenshot *
+            </label>
+            <p style="font-size:11.5px;color:var(--muted);margin:0 0 10px;line-height:1.4;">
+              After completing the UPI payment of <strong>${money(orderData.totalPaise)}</strong>, please upload your transaction confirmation receipt screenshot:
+            </p>
+
+            <input type="file" id="upi-screenshot-input" accept="image/*" style="display:none;" />
+            
+            <div id="dropzone-screenshot" style="cursor:pointer;border:1px dashed #d1b490;background:#ffffff;border-radius:8px;padding:14px;transition:all 0.2s ease;">
+              <div id="prompt-screenshot">
+                <span style="font-size:30px;display:block;margin-bottom:4px;">🖼️</span>
+                <strong style="display:block;font-size:12.5px;color:var(--ink);margin-bottom:2px;">Tap here to select payment screenshot</strong>
+                <span style="font-size:11px;color:var(--muted);">Supports Google Pay, PhonePe, Paytm, or bank transfer images</span>
+              </div>
+              <div id="preview-screenshot-wrap" style="display:none;">
+                <img id="preview-screenshot-img" src="" alt="Payment Screenshot Preview" style="max-height:160px;max-width:100%;border-radius:6px;object-fit:contain;box-shadow:0 2px 8px rgba(0,0,0,0.15);display:block;margin:0 auto 8px;" />
+                <div style="display:flex;align-items:center;justify-content:center;gap:10px;font-size:11.5px;">
+                  <span id="preview-screenshot-name" style="font-weight:600;color:var(--ink);"></span>
+                  <button type="button" id="btn-change-screenshot" class="text-button" style="color:var(--wine);text-decoration:underline;cursor:pointer;font-weight:600;">Change / Remove</button>
+                </div>
+              </div>
+            </div>
+            <div style="font-size:10.5px;color:var(--muted);text-align:left;margin-top:8px;">
+              ⚠️ Please ensure the transaction amount (${money(orderData.totalPaise)}) and date/time are clearly visible.
+            </div>
+          </div>
+
+          <button type="button" id="btn-verify-pay" class="button button-gold" style="width:100%;padding:14px;font-size:13px;font-weight:700;letter-spacing:0.5px;">
+            I Have Paid — Upload Screenshot &amp; Confirm Order (${money(orderData.totalPaise)}) ✓
+          </button>
+          <button type="button" id="btn-cancel-pay" class="button button-outline" style="width:100%;margin-top:8px;padding:10px;font-size:12px;">
+            ← Back / Change to Cash on Delivery
+          </button>
+        </div>
+
+        <p class="form-message" id="payment-verify-message" role="status" style="margin-top:12px;"></p>
+      </div>
+    `;
+
+    // Copy UPI button
+    const copyBtn = checkoutContent.querySelector("#btn-copy-upi");
+    copyBtn?.addEventListener("click", () => {
+      navigator.clipboard?.writeText(upiId);
+      copyBtn.textContent = "Copied! ✓";
+      setTimeout(() => { copyBtn.textContent = "Copy"; }, 1500);
+    });
+
+    // Back button
+    checkoutContent.querySelector("#btn-cancel-pay")?.addEventListener("click", () => {
+      renderCheckout();
+    });
+
+    // Screenshot file handling
+    let uploadedScreenshotBase64 = null;
+    const fileInput = checkoutContent.querySelector("#upi-screenshot-input");
+    const dropzone = checkoutContent.querySelector("#dropzone-screenshot");
+    const promptWrap = checkoutContent.querySelector("#prompt-screenshot");
+    const previewWrap = checkoutContent.querySelector("#preview-screenshot-wrap");
+    const previewImg = checkoutContent.querySelector("#preview-screenshot-img");
+    const previewName = checkoutContent.querySelector("#preview-screenshot-name");
+    const changeBtn = checkoutContent.querySelector("#btn-change-screenshot");
+    const verifyBtn = checkoutContent.querySelector("#btn-verify-pay");
+    const verifyMsg = checkoutContent.querySelector("#payment-verify-message");
+
+    dropzone?.addEventListener("click", (e) => {
+      if (e.target === changeBtn) return;
+      fileInput?.click();
+    });
+
+    changeBtn?.addEventListener("click", (e) => {
+      e.stopPropagation();
+      uploadedScreenshotBase64 = null;
+      if (fileInput) fileInput.value = "";
+      if (previewWrap) previewWrap.style.display = "none";
+      if (promptWrap) promptWrap.style.display = "block";
+    });
+
+    fileInput?.addEventListener("change", async () => {
+      const file = fileInput.files?.[0];
+      if (!file) return;
+      if (!file.type.startsWith("image/")) {
+        alert("Please upload a valid image file (JPG, PNG, or WEBP).");
+        return;
+      }
+
+      if (promptWrap) {
+        promptWrap.innerHTML = `
+          <span style="font-size:24px;display:block;margin-bottom:4px;">⏳</span>
+          <strong style="font-size:12px;color:var(--wine);">Processing &amp; optimizing screenshot…</strong>
+        `;
+      }
+
+      try {
+        uploadedScreenshotBase64 = await compressImageForStorage(file, 900, 0.72);
+      } catch (e) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          uploadedScreenshotBase64 = reader.result;
+          if (previewImg) previewImg.src = uploadedScreenshotBase64;
+          if (previewName) previewName.textContent = file.name || "Screenshot selected ✓";
+          if (promptWrap) promptWrap.style.display = "none";
+          if (previewWrap) previewWrap.style.display = "block";
+          if (verifyMsg) verifyMsg.textContent = "";
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+
+      if (previewImg) previewImg.src = uploadedScreenshotBase64;
+      if (previewName) previewName.textContent = file.name || "Screenshot selected ✓";
+      if (promptWrap) promptWrap.style.display = "none";
+      if (previewWrap) previewWrap.style.display = "block";
+      if (verifyMsg) verifyMsg.textContent = "";
+    });
+
+    // Submit Payment Proof & Confirm Order button (Instantly confirms order and reduces stock)
+    verifyBtn?.addEventListener("click", async () => {
+      // Screenshot validation: Must have uploaded screenshot proof!
+      if (!uploadedScreenshotBase64) {
+        verifyMsg.textContent = "Please upload your payment screenshot before submitting. Orders cannot be confirmed without payment proof.";
+        verifyMsg.classList.add("error");
+        fileInput?.click();
+        return;
+      }
+
+      verifyBtn.disabled = true;
+      verifyBtn.textContent = "Confirming order & updating stock…";
+      verifyMsg.textContent = "Saving payment details, reducing product stock, and confirming your order…";
+      verifyMsg.classList.remove("error");
+
+      await new Promise(r => setTimeout(r, 400));
+
+      let finalOrderId = `prepaid_${Date.now()}`;
+      const addressFormatted = `${orderData.street}, ${orderData.city}, ${orderData.state} - ${orderData.pincode}`;
+
+      try {
+        // 1. Immediately reduce product stock in Supabase database upon payment screenshot upload!
+        try {
+          const { data: latestProd } = await supabase
+            .from("products")
+            .select("stock")
+            .eq("id", p.id)
+            .single();
+
+          const currentStock = latestProd ? Number(latestProd.stock) : Number(p.stock);
+          const newStock = Math.max(0, currentStock - orderData.qty);
+
+          await supabase
+            .from("products")
+            .update({
+              stock: newStock,
+              updated_at: new Date().toISOString()
+            })
+            .eq("id", p.id);
+
+          p.stock = newStock;
+        } catch (stockErr) {
+          console.warn("Stock auto-deduction error:", stockErr);
+        }
+
+        // 2. Order is placed directly as 'confirmed' and 'paid' upon screenshot upload!
+        // Binary screenshot is NOT stored in the database! (Stored in browser storage keyed by order)
+        try {
+          const { data: newOrder, error: orderErr } = await supabase
+            .from("orders")
+            .insert({
+              customer_name: orderData.customerName,
+              phone: orderData.phone,
+              address: {
+                street: orderData.street,
+                city: orderData.city,
+                state: orderData.state,
+                pincode: orderData.pincode,
+                has_screenshot: true,
+                transport_fee_paise: TRANSPORT_FEE_PAISE
+              },
+              payment_method: "prepaid",
+              payment_status: "paid",
+              order_status: "confirmed",
+              total_paise: orderData.totalPaise
+            })
+            .select()
+            .single();
+
+          if (!orderErr && newOrder?.id) {
+            finalOrderId = newOrder.id;
+
+            // Insert line item in Supabase
+            try {
+              await supabase
+                .from("order_items")
+                .insert({
+                  order_id: newOrder.id,
+                  product_id: p.id,
+                  product_name: p.name,
+                  colour: orderData.chosenColour,
+                  quantity: orderData.qty,
+                  unit_price_paise: p.price_paise
+                });
+            } catch (itemErr) {
+              console.warn("order_items insert error:", itemErr);
+            }
+          } else if (orderErr) {
+            console.warn("Direct order insert note (RLS):", orderErr.message);
+          }
+        } catch (orderDbErr) {
+          console.warn("Supabase order insert caught error:", orderDbErr);
+        }
+
+        const shortId = finalOrderId.slice(0, 8).toUpperCase();
+
+        // 3. Save screenshot and local order record in localStorage for instant admin dashboard viewing (without database storage)
+        try {
+          localStorage.setItem(`saloriya_screenshot_${finalOrderId}`, uploadedScreenshotBase64);
+          localStorage.setItem("saloriya_latest_screenshot", uploadedScreenshotBase64);
+          localStorage.setItem("saloriya_latest_order_id", finalOrderId);
+
+          const list = JSON.parse(localStorage.getItem("saloriya_local_orders") || "[]");
+          const localOrder = {
+            id: finalOrderId,
+            customer_name: orderData.customerName,
+            phone: orderData.phone,
+            address: {
+              street: orderData.street,
+              city: orderData.city,
+              state: orderData.state,
+              pincode: orderData.pincode,
+              has_screenshot: true,
+              transport_fee_paise: TRANSPORT_FEE_PAISE
+            },
+            payment_method: "prepaid",
+            payment_status: "paid",
+            order_status: "confirmed",
+            total_paise: orderData.totalPaise,
+            created_at: new Date().toISOString(),
+            items: [{
+              order_id: finalOrderId,
+              product_id: p.id,
+              product_name: p.name,
+              colour: orderData.chosenColour,
+              quantity: orderData.qty,
+              unit_price_paise: p.price_paise
+            }]
+          };
+          const existingIdx = list.findIndex(o => o.id === finalOrderId);
+          if (existingIdx >= 0) {
+            list[existingIdx] = localOrder;
+          } else {
+            list.unshift(localOrder);
+          }
+          localStorage.setItem("saloriya_local_orders", JSON.stringify(list.slice(0, 50)));
+        } catch (storageErr) {
+          console.warn("Could not cache order in localStorage:", storageErr);
+        }
+
+        // 4. Dispatch Email Notification to Saloriyaofficial@gmail.com
+        sendOrderEmailNotification({
+          orderId: shortId,
+          customerName: orderData.customerName,
+          phone: orderData.phone,
+          address: addressFormatted,
+          productName: p.name,
+          colour: orderData.chosenColour,
+          quantity: orderData.qty,
+          totalAmount: money(orderData.totalPaise),
+          paymentMethod: "prepaid",
+          hasScreenshot: true
+        });
+
+        // 5. Show order confirmed success screen
+        showOrderSuccessScreen(
+          finalOrderId,
+          p,
+          orderData.chosenColour,
+          orderData.qty,
+          orderData.totalPaise,
+          orderData.customerName,
+          orderData.phone,
+          addressFormatted,
+          "prepaid",
+          "confirmed"
+        );
+      } catch (err) {
+        console.error("Payment confirmation error:", err);
+        verifyMsg.textContent = "Could not record payment details. Please share your screenshot on WhatsApp.";
+        verifyMsg.classList.add("error");
+        verifyBtn.disabled = false;
+        verifyBtn.textContent = `Try Again / Confirm (${money(orderData.totalPaise)})`;
+      }
+    });
+  }
+
+  function showOrderSuccessScreen(orderId, p, colour, quantity, totalPaise, name, phone, address, paymentMethod = "cod", paymentStatus = "confirmed") {
+    const shortId = orderId ? `#ORD-${orderId.slice(0, 8).toUpperCase()}` : "#ORD-DIRECT";
+    const paymentLabel = paymentMethod === "prepaid" 
+      ? "Online Prepaid (Payment Screenshot Received · CONFIRMED ✓)" 
+      : "Cash on Delivery (COD)";
+
+    const waText = encodeURIComponent(`Hello SALORIYA! I just placed an order:\nOrder ID: ${shortId}\nProduct: ${p.name}\nColour: ${colour}\nQuantity: ${quantity}\nTotal Amount: ${money(totalPaise)} (includes ₹50 Transport)\nPayment: ${paymentLabel}\nName: ${name}\nPhone: ${phone}\nAddress: ${address}${paymentMethod === 'prepaid' ? '\n(Payment screenshot attached / uploaded on site)' : ''}`);
+    const waUrl = `https://wa.me/918680824598?text=${waText}`;
+
+    checkoutContent.innerHTML = `
+      <div class="order-success-screen">
+        <div class="order-success-icon" style="background:#dcfce7;color:#166534;border-color:#22c55e;">
+          ✓
+        </div>
+        <p class="eyebrow" style="color:#166534;">
+          ${paymentMethod === 'prepaid' ? 'PAYMENT RECEIVED · ORDER CONFIRMED' : 'ORDER PLACED SUCCESSFULLY'}
+        </p>
+        <h3 style="font-family:'Playfair Display',serif;font-size:25px;margin:4px 0;">Thank you, ${escapeHtml(name)}!</h3>
+        <p style="color:var(--muted);font-size:12.5px;max-width:440px;margin:0 auto 14px;">
+          ${paymentMethod === 'prepaid'
+            ? 'Your payment screenshot has been received. Your jewellery order is confirmed and stock has been automatically reserved for immediate dispatch.'
+            : 'Your jewellery order has been received by SALORIYA and will be prepared for dispatch.'
+          }
+        </p>
+        <div class="order-success-id">${shortId}</div>
+        <div style="background:#faf4f0;border:1px solid var(--line);border-radius:10px;padding:16px;text-align:left;font-size:12px;line-height:1.6;margin-bottom:16px;">
+          <strong>Item:</strong> ${escapeHtml(p.name)} (${escapeHtml(colour)}) × ${quantity}<br/>
+          <strong>Total Amount:</strong> ${money(totalPaise)} <span style="color:var(--muted);font-size:10.5px;">(includes ₹50 transport fee)</span><br/>
+          <strong>Delivery to:</strong> ${escapeHtml(address)}<br/>
+          <strong>Payment Status:</strong> ${escapeHtml(paymentLabel)}<br/>
+          <small style="color:#166534;font-weight:600;display:block;margin-top:6px;">✉️ Notification automatically sent to store email (Saloriyaofficial@gmail.com)</small>
+        </div>
+
+        <a href="${waUrl}" target="_blank" rel="noopener,noreferrer" class="modal-wa-btn" style="margin-bottom:10px;">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+            <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91C2.13 13.66 2.59 15.36 3.45 16.86L2.05 22L7.3 20.62C8.75 21.41 10.38 21.83 12.04 21.83C17.5 21.83 21.95 17.38 21.95 11.92C21.95 9.27 20.92 6.78 19.05 4.91C17.18 3.03 14.69 2 12.04 2ZM12.05 20.16C10.57 20.16 9.12 19.76 7.85 19.01L7.55 18.83L4.43 19.65L5.26 16.61L5.06 16.29C4.24 14.99 3.8 13.47 3.8 11.91C3.8 7.37 7.5 3.67 12.05 3.67C14.25 3.67 16.31 4.53 17.87 6.09C19.42 7.65 20.28 9.72 20.28 11.92C20.28 16.46 16.58 20.16 12.05 20.16ZM16.57 14.33C16.32 14.2 15.1 13.6 14.87 13.52C14.64 13.43 14.48 13.39 14.31 13.64C14.15 13.88 13.68 14.44 13.53 14.6C13.39 14.77 13.25 14.79 13 14.66C12.75 14.54 11.95 14.28 11 13.43C10.26 12.77 9.76 11.95 9.61 11.7C9.47 11.45 9.6 11.32 9.72 11.2C9.83 11.09 9.97 10.91 10.1 10.76C10.22 10.61 10.26 10.5 10.34 10.34C10.42 10.17 10.38 10.03 10.32 9.91C10.26 9.78 9.76 8.56 9.56 8.06C9.36 7.58 9.16 7.64 9.01 7.63C8.87 7.62 8.71 7.62 8.54 7.62C8.38 7.62 8.11 7.68 7.89 7.93C7.66 8.17 7.03 8.76 7.03 9.97C7.03 11.18 7.91 12.35 8.03 12.51C8.16 12.68 9.77 15.16 12.24 16.22C12.82 16.47 13.28 16.63 13.64 16.74C14.23 16.93 14.76 16.9 15.19 16.84C15.67 16.77 16.66 16.24 16.87 15.66C17.07 15.07 17.07 14.57 17.01 14.47C16.95 14.37 16.81 14.45 16.57 14.33Z"/>
+          </svg>
+          Send Order Confirmation on WhatsApp ↗
+        </a>
+        <button type="button" class="button button-outline" data-close-checkout style="width:100%;">
+          Continue Shopping
+        </button>
+      </div>
+    `;
+
+    checkoutContent.querySelector("[data-close-checkout]")?.addEventListener("click", closeCheckoutModal);
+  }
+
+  renderCheckout();
+  checkoutModal.hidden = false;
+  checkoutModal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+}
+
+function closeCheckoutModal() {
+  if (!checkoutModal) return;
+  checkoutModal.hidden = true;
+  checkoutModal.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("modal-open");
+}
+
+checkoutModal?.addEventListener("click", e => {
+  if (e.target.hasAttribute("data-close-checkout") || e.target.closest("[data-close-checkout]")) {
+    closeCheckoutModal();
+  }
+});
 
 // Modal close triggers
 modal.addEventListener("click", e => {

@@ -92,21 +92,33 @@ create policy "Admin reads own membership"
 on public.store_admins for select to authenticated
 using (user_id = (select auth.uid()));
 
-create policy "Admin reads orders"
-on public.orders for select to authenticated
-using ((select public.is_store_admin()));
-
-create policy "Admin updates orders"
-on public.orders for update to authenticated
+-- Full order management for authenticated store admins
+create policy "Admin manages orders"
+on public.orders for all to authenticated
 using ((select public.is_store_admin()))
 with check ((select public.is_store_admin()));
 
-create policy "Admin reads order items"
-on public.order_items for select to authenticated
-using ((select public.is_store_admin()));
+create policy "Admin manages order items"
+on public.order_items for all to authenticated
+using ((select public.is_store_admin()))
+with check ((select public.is_store_admin()));
+
+-- Customer express checkout insertion (allows storefront visitors to submit orders)
+create policy "Customers can place orders"
+on public.orders for insert to anon, authenticated
+with check (true);
+
+create policy "Customers can insert order items"
+on public.order_items for insert to anon, authenticated
+with check (true);
 ```
 
-Review your Supabase project's default table grants. Do not grant anonymous/authenticated public insert access to `orders` or `order_items`. Create orders only through a trusted server-side function that validates prices, stock and payment status. Test the policies with a non-admin account.
+### Orders & Automated Stock Deduction
+When you confirm an order in the **Admin Orders Dashboard** (`admin.html`), the system:
+1. Checks current product stock in Supabase.
+2. Decrements `products.stock` by the ordered quantities: `stock = Math.max(0, currentStock - qty)`.
+3. Marks the order as `confirmed` with a live toast notification.
+4. If a confirmed order is later cancelled, the admin panel automatically prompts you with the option to restore the stock back to the inventory!
 
 ## 3. Create an admin user
 

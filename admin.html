@@ -4,6 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="icon" type="image/png" href="/logo.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Plus+Jakarta+Sans:wght@500;600;700;800&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet" />
   <title>SALORIYA — Store Admin</title>
 </head>
 <body class="admin-body">
@@ -26,29 +29,198 @@
       </form>
     </section>
     <section id="dashboard" hidden>
-      <div class="admin-title"><div><p class="eyebrow">YOUR JEWELLERY BOX</p><h1>Product <em>studio.</em></h1></div><button id="signout" class="button button-outline">Sign out</button></div>
-      <div class="admin-columns">
-        <section class="admin-panel">
-          <h2 id="form-title">Add a new piece</h2>
-          <form id="product-form" class="admin-form">
-            <input type="hidden" name="id" />
-            <label>Product name<input name="name" required maxlength="120" placeholder="e.g. 1g Gold Covering Earring & Chain Combo" /></label>
-            <label>Slug (web address)<input name="slug" required pattern="[a-z0-9-]+" placeholder="gold-covering-combo-set" /></label>
-            <label>Description<textarea name="description" rows="3" placeholder="Details about this piece, material (e.g. 1g gold micro plating), length, etc."></textarea></label>
-            <div class="form-row">
-              <label>Category<select name="category" required>
-                <option value="Combos">Chain &amp; Earring Combos</option>
-                <option value="Earrings">Earrings</option>
-                <option value="Bracelets">Bracelets &amp; Bangles</option>
-                <option value="Jhumkas">Jhumkas</option>
-                <option value="Studs">Studs</option>
-                <option value="Chains">Chains &amp; Necklaces</option>
-              </select></label>
-              <label>Price (₹)<input name="price" type="number" required min="0" step="0.01" placeholder="299" /></label>
+      <div class="admin-title">
+        <div>
+          <p class="eyebrow">SALORIYA MANAGEMENT CONSOLE</p>
+          <h1>Store <em>Studio &amp; Orders.</em></h1>
+        </div>
+        <div class="admin-header-actions">
+          <button id="open-record-order-btn" class="button button-gold" type="button">+ Record Order</button>
+          <button id="signout" class="button button-outline" type="button">Sign out</button>
+        </div>
+      </div>
+
+      <!-- Segmented Luxury Navigation Tabs -->
+      <nav class="admin-tabs-nav" aria-label="Admin Sections">
+        <button type="button" class="admin-tab active" data-tab="orders">
+          <span class="tab-icon">📦</span>
+          <span>Orders Dashboard</span>
+          <span id="orders-badge" class="tab-badge" hidden>0</span>
+        </button>
+        <button type="button" class="admin-tab" data-tab="products">
+          <span class="tab-icon">✨</span>
+          <span>Product Studio</span>
+        </button>
+        <button type="button" class="admin-tab" data-tab="inventory">
+          <span class="tab-icon">📋</span>
+          <span>Live Stock Monitor</span>
+        </button>
+      </nav>
+
+      <!-- TAB 1: ORDERS DASHBOARD -->
+      <div id="view-orders" class="admin-tab-view active">
+        <!-- Order Metrics Strip -->
+        <div class="metrics-grid">
+          <div class="metric-card">
+            <span class="metric-label">Total Orders</span>
+            <strong class="metric-value" id="metric-total-orders">0</strong>
+            <span class="metric-sub">All-time placed orders</span>
+          </div>
+          <div class="metric-card metric-card-highlight">
+            <div class="metric-header-row">
+              <span class="metric-label">Pending Confirmation</span>
+              <span class="pulse-dot" id="pending-pulse" hidden></span>
             </div>
-            <label>Colours (comma separated)<input name="colours" placeholder="Gold, Rose Gold, Silver" /></label>
-            <label>Stock quantity<input name="stock" type="number" required min="0" step="1" value="1" /></label>
-            <label>Product images
+            <strong class="metric-value" id="metric-pending-orders">0</strong>
+            <span class="metric-sub" id="metric-pending-sub">Awaiting stock deduction</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Confirmed / In-Transit</span>
+            <strong class="metric-value" id="metric-confirmed-orders">0</strong>
+            <span class="metric-sub">Stock already deducted</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Total Revenue</span>
+            <strong class="metric-value" id="metric-total-revenue">₹0</strong>
+            <span class="metric-sub">Confirmed &amp; completed sales</span>
+          </div>
+        </div>
+
+        <!-- Orders Toolbar -->
+        <div class="orders-toolbar">
+          <div class="orders-search-box">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="text" id="orders-search" placeholder="Search orders by customer, phone, product, or Order ID…" />
+          </div>
+
+          <div class="orders-filter-chips" id="orders-filter-chips">
+            <button type="button" class="filter-chip active" data-status="all">All (<span id="count-all">0</span>)</button>
+            <button type="button" class="filter-chip" data-status="pending">Pending (<span id="count-pending">0</span>)</button>
+            <button type="button" class="filter-chip" data-status="confirmed">Confirmed (<span id="count-confirmed">0</span>)</button>
+            <button type="button" class="filter-chip" data-status="shipped">Shipped (<span id="count-shipped">0</span>)</button>
+            <button type="button" class="filter-chip" data-status="delivered">Delivered (<span id="count-delivered">0</span>)</button>
+            <button type="button" class="filter-chip" data-status="cancelled">Cancelled (<span id="count-cancelled">0</span>)</button>
+          </div>
+
+          <div class="orders-toolbar-actions">
+            <button type="button" id="refresh-orders" class="button button-outline button-small">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="23 4 23 10 17 10"/>
+                <polyline points="1 20 1 14 7 14"/>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+              </svg>
+              Refresh Orders
+            </button>
+            <button type="button" id="record-order-btn-toolbar" class="button button-dark button-small">+ New Order</button>
+          </div>
+        </div>
+
+        <p class="form-message" id="orders-message" role="status"></p>
+
+        <!-- Orders Cards Container -->
+        <div id="orders-list-container" class="orders-list-container">
+          <div class="loading-box">
+            <div class="spinner"></div>
+            <p>Loading orders from database…</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 2: PRODUCTS STUDIO (NEAT & SEQUENCED) -->
+      <div id="view-products" class="admin-tab-view">
+        <!-- 1. Studio Summary & Action Header -->
+        <div class="studio-header-strip">
+          <div class="studio-header-info">
+            <h2>Product Studio &amp; Catalogue</h2>
+            <p class="hint">Organize pieces, toggle publish status, manage pricing, and update stock.</p>
+          </div>
+          <div class="studio-header-actions">
+            <button type="button" id="toggle-product-form-btn" class="button button-gold">
+              <span class="btn-icon">✨</span>
+              <span id="form-toggle-text">+ Add New Piece</span>
+            </button>
+            <button type="button" id="refresh-products" class="button button-outline button-small">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="23 4 23 10 17 10"/>
+                <polyline points="1 20 1 14 7 14"/>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+              </svg>
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. Product Form Panel (Expandable / Collapsible when adding or editing) -->
+        <section id="product-form-panel" class="admin-panel product-editor-panel" hidden>
+          <div class="editor-panel-header">
+            <div>
+              <span class="eyebrow">CATALOGUE CREATOR &amp; EDITOR</span>
+              <h2 id="form-title">Add a new piece</h2>
+            </div>
+            <button type="button" id="close-form-btn" class="editor-close-btn" title="Close editor">✕</button>
+          </div>
+
+          <form id="product-form" class="admin-form product-editor-form">
+            <input type="hidden" name="id" />
+
+            <div class="editor-grid">
+              <!-- Basic Info Column -->
+              <div class="editor-section">
+                <h3 class="editor-section-title">1. Product Information</h3>
+                <label>Product Name
+                  <input name="name" required maxlength="120" placeholder="e.g. 1g Gold Covering Earring &amp; Chain Combo" />
+                </label>
+                <label>Slug (Web Address URL)
+                  <input name="slug" required pattern="[a-z0-9-]+" placeholder="gold-covering-combo-set" />
+                </label>
+                <label>Description &amp; Materials
+                  <textarea name="description" rows="3" placeholder="Details about this piece, 1g gold micro-plating, chain length, stones, etc."></textarea>
+                </label>
+                <div class="form-row">
+                  <label>Category
+                    <select name="category" required>
+                      <option value="Combos">Chain &amp; Earring Combos</option>
+                      <option value="Earrings">Earrings</option>
+                      <option value="Bracelets">Bracelets &amp; Bangles</option>
+                      <option value="Jhumkas">Jhumkas</option>
+                      <option value="Studs">Studs</option>
+                      <option value="Chains">Chains &amp; Necklaces</option>
+                    </select>
+                  </label>
+                  <label>Price in Rupees (₹)
+                    <input name="price" type="number" required min="0" step="0.01" placeholder="299" />
+                  </label>
+                </div>
+              </div>
+
+              <!-- Inventory & Variants Column -->
+              <div class="editor-section">
+                <h3 class="editor-section-title">2. Variants &amp; Inventory</h3>
+                <label>Colours / Variants (Comma Separated)
+                  <input name="colours" placeholder="Gold, Rose Gold, Silver (or leave blank for single look)" />
+                  <span class="field-hint">Leave blank for pieces with no colour choices. If multi-colour, separate with commas.</span>
+                </label>
+
+                <label>Stock Quantity Available
+                  <input name="stock" type="number" required min="0" step="1" value="1" />
+                  <span class="field-hint">Automatically decrements whenever an order is confirmed.</span>
+                </label>
+
+                <div class="editor-publish-box">
+                  <label class="checkbox-label">
+                    <input name="published" type="checkbox" />
+                    <span><strong>Publish to live storefront</strong> (Visible to all customers immediately)</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Image Upload Section -->
+            <div class="editor-section image-upload-section">
+              <h3 class="editor-section-title">3. High-Definition Photos</h3>
               <div class="file-dropzone" id="file-dropzone">
                 <input name="images" id="image-upload-input" type="file" accept="image/*" multiple class="file-input-hidden" />
                 <div class="dropzone-content">
@@ -57,23 +229,272 @@
                     <circle cx="8.5" cy="8.5" r="1.5"/>
                     <polyline points="21 15 16 10 5 21"/>
                   </svg>
-                  <p class="dropzone-text"><strong>Choose images</strong> or drag &amp; drop here</p>
-                  <span class="dropzone-sub">PNG, JPG, WEBP, GIF up to 5 MB</span>
+                  <p class="dropzone-text"><strong>Choose images</strong> or drag &amp; drop files here</p>
+                  <span class="dropzone-sub">PNG, JPG, WEBP up to 5 MB per photo</span>
                 </div>
               </div>
-            </label>
-            <div id="image-previews" class="image-previews"></div>
-            <p class="hint">Upload photos in the order of your colours (1st image for 1st colour, 2nd for 2nd colour), or name your files with the colour name (e.g. <code>green-butterfly.jpg</code>). Published images are public.</p>
-            <label class="checkbox-label"><input name="published" type="checkbox" /> Publish in storefront</label>
-            <div class="form-row"><button class="button button-dark" type="submit">Save product</button><button class="button button-outline" type="button" id="reset-form">Clear form</button></div>
+              <div id="image-previews" class="image-previews"></div>
+              <p class="hint">Upload in the order of your colours (1st photo for 1st colour, 2nd for 2nd colour) so storefront automatically switches photos when the colour is selected.</p>
+            </div>
+
+            <div class="editor-actions-row">
+              <button class="button button-dark" type="submit" id="save-product-btn">
+                <span>💾 Save &amp; Publish Piece</span>
+              </button>
+              <button class="button button-outline" type="button" id="reset-form">Clear Form</button>
+              <button class="button button-outline" type="button" id="cancel-edit-btn">Cancel</button>
+            </div>
             <p class="form-message" id="product-message" role="status"></p>
           </form>
         </section>
+
+        <!-- 3. Sort & Filter Toolbar for Products in Admin -->
+        <div class="admin-products-toolbar">
+          <div class="admin-search-wrap">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="text" id="admin-product-search" placeholder="Search pieces by name, category, or slug…" />
+          </div>
+
+          <!-- Filter by Status -->
+          <div class="admin-filter-group">
+            <div class="toolbar-select-wrap">
+              <label for="admin-filter-status" class="toolbar-label">Status:</label>
+              <select id="admin-filter-status" class="toolbar-select">
+                <option value="all">All Status</option>
+                <option value="published">Published</option>
+                <option value="draft">Drafts / Unpublished</option>
+              </select>
+            </div>
+
+            <!-- Filter by Stock -->
+            <div class="toolbar-select-wrap">
+              <label for="admin-filter-stock" class="toolbar-label">Stock:</label>
+              <select id="admin-filter-stock" class="toolbar-select">
+                <option value="all">All Stock</option>
+                <option value="in-stock">In Stock</option>
+                <option value="low-stock">Low Stock (≤ 3)</option>
+                <option value="out-of-stock">Out of Stock (0)</option>
+              </select>
+            </div>
+
+            <!-- Filter by Category -->
+            <div class="toolbar-select-wrap">
+              <label for="admin-filter-category" class="toolbar-label">Category:</label>
+              <select id="admin-filter-category" class="toolbar-select">
+                <option value="all">All Categories</option>
+                <option value="Combos">Combos</option>
+                <option value="Earrings">Earrings</option>
+                <option value="Bracelets">Bracelets &amp; Bangles</option>
+                <option value="Jhumkas">Jhumkas</option>
+                <option value="Studs">Studs</option>
+                <option value="Chains">Chains &amp; Necklaces</option>
+              </select>
+            </div>
+
+            <!-- Filter by Variants: No colours separate vs With colours separate -->
+            <div class="toolbar-select-wrap">
+              <label for="admin-filter-variants" class="toolbar-label">Variants:</label>
+              <select id="admin-filter-variants" class="toolbar-select">
+                <option value="all">All Pieces</option>
+                <option value="with-colours">✨ With Colour Options</option>
+                <option value="single-colour">👑 Single / No Colour Options</option>
+              </select>
+            </div>
+
+            <!-- Sort By -->
+            <div class="toolbar-select-wrap">
+              <label for="admin-sort-products" class="toolbar-label">Sort:</label>
+              <select id="admin-sort-products" class="toolbar-select">
+                <option value="newest">Newest First</option>
+                <option value="oldest">Oldest First</option>
+                <option value="price-asc">Price: Low to High</option>
+                <option value="price-desc">Price: High to Low</option>
+                <option value="stock-asc">Stock: Low to High</option>
+                <option value="stock-desc">Stock: High to Low</option>
+                <option value="name-asc">Name (A – Z)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Status / Results Summary Strip -->
+        <div class="admin-products-summary-strip">
+          <span id="admin-products-count" class="summary-count">Loading products…</span>
+        </div>
+
+        <!-- 4. Sequenced Luxury Products Grid -->
+        <div id="admin-products" class="admin-products-grid">
+          <div class="loading-box">
+            <div class="spinner"></div>
+            <p>Loading pieces from database…</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: LIVE STOCK & INVENTORY MONITOR -->
+      <div id="view-inventory" class="admin-tab-view">
         <section class="admin-panel">
-          <div class="inventory-heading"><h2>Your products</h2><button class="button button-outline" id="refresh-products" type="button">Refresh</button></div>
-          <p class="hint">Edit a product to change its details, price or stock. Unpublish instead of deleting products linked to orders.</p>
-          <div id="admin-products" class="admin-products">Loading products…</div>
+          <div class="inventory-heading">
+            <div>
+              <h2>Live Inventory &amp; Stock Levels</h2>
+              <p class="hint">Real-time stock monitor. When orders are confirmed, stock decreases automatically here.</p>
+            </div>
+            <button class="button button-outline" id="refresh-stock-table" type="button">Refresh Stock</button>
+          </div>
+          <div id="inventory-stock-table-wrap" class="stock-table-wrap">Loading live stock…</div>
         </section>
+      </div>
+
+      <!-- RECORD / CREATE NEW ORDER MODAL -->
+      <div id="record-order-modal" class="admin-modal" hidden>
+        <div class="admin-modal-backdrop" data-close-order-modal></div>
+        <div class="admin-modal-card">
+          <div class="admin-modal-header">
+            <div>
+              <p class="eyebrow">ORDER MANAGEMENT</p>
+              <h3>Record New Order</h3>
+            </div>
+            <button type="button" class="modal-close-icon" data-close-order-modal aria-label="Close modal">×</button>
+          </div>
+
+          <form id="record-order-form" class="admin-form">
+            <p class="hint">Record orders received via WhatsApp, Instagram DM, phone, or in-person. Choose "Confirmed" to automatically deduct product stock.</p>
+
+            <div class="form-row">
+              <label>Select Product *
+                <select name="productId" id="order-form-product" required>
+                  <option value="">-- Choose jewellery piece --</option>
+                </select>
+              </label>
+              <label>Selected Colour / Variant
+                <select name="colour" id="order-form-colour">
+                  <option value="Standard">Standard</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="form-row">
+              <label>Quantity *
+                <input name="quantity" id="order-form-qty" type="number" min="1" step="1" value="1" required />
+              </label>
+              <label>Unit Price (₹) *
+                <input name="unitPrice" id="order-form-price" type="number" min="0" step="0.01" required placeholder="0.00" />
+              </label>
+            </div>
+
+            <div class="order-stock-info-box" id="order-stock-indicator">
+              <span>Current Stock: <strong id="order-product-live-stock">—</strong></span>
+              <span>Total Price: <strong id="order-calc-total">₹0</strong></span>
+            </div>
+
+            <div class="form-row">
+              <label>Customer Name *
+                <input name="customerName" required placeholder="e.g. Priya Sharma" />
+              </label>
+              <label>Customer Mobile Phone *
+                <input name="phone" required placeholder="10-digit number (e.g. 9876543210)" />
+              </label>
+            </div>
+
+            <label>Delivery Address *
+              <textarea name="street" rows="2" required placeholder="House / Flat No, Street, Landmark"></textarea>
+            </label>
+
+            <div class="form-row form-row-three">
+              <label>City *
+                <input name="city" required placeholder="Chennai" />
+              </label>
+              <label>State *
+                <input name="state" required value="Tamil Nadu" />
+              </label>
+              <label>PIN Code *
+                <input name="pincode" required placeholder="600001" maxlength="6" />
+              </label>
+            </div>
+
+            <div class="form-row">
+              <label>Payment Method
+                <select name="paymentMethod" required>
+                  <option value="cod">Cash on Delivery (COD)</option>
+                  <option value="prepaid">Prepaid (UPI / Bank Transfer / WhatsApp Pay)</option>
+                </select>
+              </label>
+              <label>Payment Status
+                <select name="paymentStatus" required>
+                  <option value="pending">Pending</option>
+                  <option value="paid">Paid</option>
+                </select>
+              </label>
+            </div>
+
+            <label class="order-status-choice">
+              <span>Initial Order Status:</span>
+              <div class="radio-options">
+                <label class="radio-label">
+                  <input type="radio" name="orderStatus" value="confirmed" checked />
+                  <strong>Confirmed</strong> (Immediately reduce stock by quantity)
+                </label>
+                <label class="radio-label">
+                  <input type="radio" name="orderStatus" value="pending" />
+                  <strong>Pending</strong> (Review first, reduce stock later upon confirmation)
+                </label>
+              </div>
+            </label>
+
+            <div class="form-row">
+              <button class="button button-gold" type="submit" id="save-order-btn">Create &amp; Save Order</button>
+              <button class="button button-outline" type="button" data-close-order-modal>Cancel</button>
+            </div>
+
+            <p class="form-message" id="record-order-message" role="status"></p>
+          </form>
+        </div>
+      </div>
+      <!-- Admin Payment Screenshot Lightbox Modal -->
+      <div id="admin-screenshot-modal" class="admin-modal" hidden>
+        <div class="admin-modal-backdrop" id="screenshot-modal-backdrop"></div>
+        <div class="admin-modal-card" style="max-width:600px;">
+          <div class="admin-modal-header">
+            <div>
+              <p class="eyebrow" style="margin:0;font-size:10px;color:var(--wine);">CUSTOMER PAYMENT PROOF</p>
+              <h3 id="screenshot-modal-title" style="margin:2px 0 0;font-size:20px;font-family:'Playfair Display',serif;">Payment Screenshot</h3>
+            </div>
+            <button type="button" id="close-screenshot-modal-btn" class="modal-close-icon" aria-label="Close modal">×</button>
+          </div>
+          <div class="screenshot-modal-content" style="text-align:center;">
+            <div id="screenshot-modal-img-wrap" style="background:#18181b;border-radius:10px;padding:12px;display:flex;align-items:center;justify-content:center;min-height:280px;max-height:460px;overflow:auto;margin-bottom:14px;">
+              <img id="screenshot-modal-img" src="" alt="Customer Payment Screenshot" style="max-width:100%;max-height:420px;border-radius:6px;object-fit:contain;box-shadow:0 4px 16px rgba(0,0,0,0.4);" />
+              <div id="screenshot-modal-placeholder" style="display:none;color:#d4d4d8;padding:26px 14px;font-size:13px;line-height:1.6;">
+                <span style="font-size:36px;display:block;margin-bottom:10px;">📲</span>
+                <strong style="color:#ffffff;display:block;margin-bottom:6px;">Screenshot in Customer WhatsApp Chat</strong>
+                <p style="margin:0 0 14px;color:#a1a1aa;font-size:12px;">The customer submitted a payment screenshot from their device. Since screenshots are not stored in the database, you can view the photo sent directly in their WhatsApp chat, or attach it locally below.</p>
+                <a id="screenshot-modal-wa-link" href="#" target="_blank" rel="noopener,noreferrer" class="button button-gold" style="display:inline-flex;align-items:center;gap:6px;padding:10px 18px;font-size:12px;">Open Customer WhatsApp Chat ↗</a>
+              </div>
+            </div>
+            <div id="screenshot-modal-details" style="background:#faf4f0;border-left:3px solid var(--wine);padding:10px 14px;text-align:left;border-radius:0 6px 6px 0;font-size:12px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+              <div>
+                <span style="color:var(--muted);font-size:11px;display:block;">Customer:</span>
+                <strong id="screenshot-customer-name" style="color:var(--ink);"></strong> · <span id="screenshot-customer-phone"></span>
+              </div>
+              <div>
+                <span style="color:var(--muted);font-size:11px;display:block;">Order Total:</span>
+                <strong id="screenshot-order-total" style="color:var(--wine);font-size:15px;"></strong>
+              </div>
+            </div>
+            <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
+              <label class="button button-outline button-small" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;" title="Attach/Update screenshot locally for this order">
+                📁 Attach Local Image
+                <input type="file" id="admin-attach-screenshot-input" accept="image/*" style="display:none;" />
+              </label>
+              <button type="button" class="button button-dark button-small" id="screenshot-modal-verify-btn">
+                ✓ Verify &amp; Confirm (Deduct Stock)
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
   </main>

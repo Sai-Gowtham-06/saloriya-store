@@ -81,7 +81,7 @@ export default async function handler(req, res) {
     let smsSent = false;
     let gatewayError = null;
 
-    const FAST2SMS_API_KEY = (process.env.FAST2SMS_API_KEY || "Y77NsbezYuiUUNXgHGiL5rIiYAxGBdq8LgYegssnFbmdJRZdH8Aw5yEa3jYOABW5o6Q0G0ZbWZDiEyr9").trim();
+    const FAST2SMS_API_KEY = (process.env.FAST2SMS_API_KEY || "").trim();
 
     if (FAST2SMS_API_KEY) {
       try {

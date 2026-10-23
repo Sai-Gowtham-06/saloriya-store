@@ -55,6 +55,11 @@
           <span class="tab-icon">📋</span>
           <span>Live Stock Monitor</span>
         </button>
+        <button type="button" class="admin-tab" data-tab="promos">
+          <span class="tab-icon">🏷️</span>
+          <span>Promo Codes</span>
+          <span id="promos-badge" class="tab-badge" hidden>0</span>
+        </button>
       </nav>
 
       <!-- TAB 1: ORDERS DASHBOARD -->
@@ -364,6 +369,60 @@
             <button class="button button-outline" id="refresh-stock-table" type="button">Refresh Stock</button>
           </div>
           <div id="inventory-stock-table-wrap" class="stock-table-wrap">Loading live stock…</div>
+        </section>
+      </div>
+
+      <!-- TAB 4: PROMO CODES (FREE DELIVERY) -->
+      <div id="view-promos" class="admin-tab-view">
+        <section class="admin-panel">
+          <div class="inventory-heading" style="margin-bottom:16px;">
+            <div>
+              <p class="eyebrow" style="color:var(--wine);font-size:11px;margin:0 0 4px;">MARKETING &amp; DISCOUNTS</p>
+              <h2 style="font-family:'Playfair Display',serif;font-size:22px;margin:0 0 4px;">Promo Codes (Free Delivery)</h2>
+              <p class="hint" style="margin:0;">Create and manage voucher codes to give customers complimentary free delivery (waives the ₹50.00 courier fee).</p>
+            </div>
+            <button class="button button-outline" id="refresh-promos-btn" type="button">↻ Refresh Codes</button>
+          </div>
+
+          <!-- Promo Code Creator Box -->
+          <div class="promo-creator-card" style="background:#fffaf6;border:1.5px solid var(--gold);border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:0 4px 16px rgba(134,30,56,0.06);">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;border-bottom:1px solid rgba(209,180,144,0.3);padding-bottom:10px;">
+              <h3 style="font-family:'Playfair Display',serif;font-size:17px;color:var(--wine);margin:0;">+ Create New Promo Code</h3>
+              <span class="eyebrow" style="font-size:10px;color:var(--gold);">MANUAL VOUCHER CREATOR</span>
+            </div>
+            <form id="create-promo-form" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:14px;align-items:end;">
+              <label style="font-size:12px;font-weight:600;display:flex;flex-direction:column;gap:6px;">
+                Promo Code (Letters &amp; Numbers) *
+                <input type="text" name="code" id="promo-code-input" placeholder="e.g. FREEDELIVERY, SALORIYA50" required style="text-transform:uppercase;font-weight:700;letter-spacing:1px;padding:10px;border:1.5px solid #d1b490;border-radius:6px;font-size:13px;" />
+              </label>
+
+              <label style="font-size:12px;font-weight:600;display:flex;flex-direction:column;gap:6px;">
+                Benefit Type *
+                <select name="discountType" id="promo-type-select" style="padding:10px;border:1.5px solid #d1b490;border-radius:6px;font-size:13px;background:#fff;">
+                  <option value="free_delivery" selected>Free Delivery (₹50.00 OFF Courier Fee)</option>
+                </select>
+              </label>
+
+              <label style="font-size:12px;font-weight:600;display:flex;flex-direction:column;gap:6px;">
+                Voucher Note / Description
+                <input type="text" name="description" id="promo-desc-input" placeholder="e.g. Special Offer" style="padding:10px;border:1.5px solid #d1b490;border-radius:6px;font-size:13px;" />
+              </label>
+
+              <div>
+                <button type="submit" id="btn-save-promo" class="button button-gold" style="width:100%;padding:11px 18px;font-size:13px;font-weight:700;">
+                  + Add Promo Code
+                </button>
+              </div>
+            </form>
+            <p id="promo-form-message" class="form-message" role="status" style="margin:10px 0 0;"></p>
+          </div>
+
+          <!-- Existing Promo Codes List -->
+          <div class="promos-table-wrap" style="background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.04);">
+            <div id="promos-list-container">
+              <div class="loading-box"><div class="spinner"></div><p>Loading promo codes…</p></div>
+            </div>
+          </div>
         </section>
       </div>
 

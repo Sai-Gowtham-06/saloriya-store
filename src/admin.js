@@ -303,6 +303,8 @@ function switchTab(tabName) {
     loadOrders();
   } else if (tabName === "inventory") {
     renderStockMonitor();
+  } else if (tabName === "promos") {
+    loadPromoCodes();
   }
 }
 
@@ -893,6 +895,11 @@ function orderCard(order) {
     ? `<span class="payment-method-badge prepaid-badge" style="background:#fef3c7;color:#92400e;border:1.5px solid #f59e0b;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:4px;">⚡ ONLINE UPI</span>`
     : `<span class="payment-method-badge cod-badge" style="background:#e0f2fe;color:#0369a1;border:1.5px solid #7dd3fc;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:4px;">💵 CASH ON DELIVERY</span>`;
 
+  const promoCodeUsed = order.promo_code || order.address?.promo_code;
+  const promoBadge = promoCodeUsed
+    ? `<span class="promo-order-badge" style="background:#dcfce7;color:#15803d;border:1.5px solid #86efac;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:700;display:inline-flex;align-items:center;gap:4px;">🏷️ PROMO: ${escapeHtml(promoCodeUsed)} (FREE DELIVERY)</span>`
+    : "";
+
   // Action buttons depending on status and payment method
   let actionButtonsHtml = "";
   if (order.order_status === "pending") {
@@ -967,6 +974,7 @@ function orderCard(order) {
         </div>
         <div class="order-badges-group">
           ${paymentMethodBadge}
+          ${promoBadge}
           <span class="status-tag ${statusClass}">
             ● ${order.order_status}
           </span>
@@ -1838,6 +1846,281 @@ refreshStockTableBtn?.addEventListener("click", async () => {
   await loadProducts();
 });
 
+/* ==========================================================================
+   PROMO CODES (FREE DELIVERY) MANAGEMENT CONTROLLER
+   ========================================================================== */
+
+let promoCodesList = [];
+const LOCAL_PROMOS_STORAGE_KEY = "saloriya_admin_promo_codes";
+
+function getLocalPromoCodes() {
+  try {
+    const raw = localStorage.getItem(LOCAL_PROMOS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function setLocalPromoCodes(list) {
+  try {
+    localStorage.setItem(LOCAL_PROMOS_STORAGE_KEY, JSON.stringify(list));
+  } catch (e) {
+    console.warn("Local promo storage error:", e);
+  }
+}
+
+function getInitialDefaultPromos() {
+  return [
+    {
+      id: "promo-free-default",
+      code: "FREEDELIVERY",
+      discount_type: "free_delivery",
+      discount_value: 50,
+      description: "Complimentary Free Transport & Packaging",
+      is_active: true,
+      uses_count: 0,
+      created_at: new Date().toISOString()
+    }
+  ];
+}
+
+async function loadPromoCodes() {
+  const container = document.querySelector("#promos-list-container");
+  const badge = document.querySelector("#promos-badge");
+
+  let localPromos = getLocalPromoCodes();
+  if (!localPromos || !localPromos.length) {
+    localPromos = getInitialDefaultPromos();
+    setLocalPromoCodes(localPromos);
+  }
+
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase
+        .from("promo_codes")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (!error && Array.isArray(data)) {
+        promoCodesList = data;
+        setLocalPromoCodes(data);
+      } else {
+        promoCodesList = localPromos;
+      }
+    } catch (e) {
+      promoCodesList = localPromos;
+    }
+  } else {
+    promoCodesList = localPromos;
+  }
+
+  const activeCount = promoCodesList.filter(p => p.is_active).length;
+  if (badge) {
+    badge.textContent = activeCount;
+    badge.hidden = activeCount === 0;
+  }
+
+  renderPromoCodes();
+}
+
+function renderPromoCodes() {
+  const container = document.querySelector("#promos-list-container");
+  if (!container) return;
+
+  if (!promoCodesList || promoCodesList.length === 0) {
+    container.innerHTML = `
+      <div class="empty-orders-box" style="padding:32px 16px;text-align:center;">
+        <span style="font-size:32px;display:block;margin-bottom:8px;">🏷️</span>
+        <strong style="display:block;font-size:15px;color:var(--ink);">No promo codes created yet</strong>
+        <p style="font-size:12px;color:var(--muted);margin:4px 0 0;">Create a promo code above (e.g. FREEDELIVERY) to offer free delivery to your customers.</p>
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = `
+    <table class="stock-table promo-codes-table">
+      <thead>
+        <tr>
+          <th>Promo Code</th>
+          <th>Discount Benefit</th>
+          <th>Description</th>
+          <th>Status</th>
+          <th>Created</th>
+          <th style="text-align:right;">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${promoCodesList.map(item => `
+          <tr data-promo-id="${item.id}">
+            <td>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="promo-code-pill" style="font-family:monospace;font-weight:700;font-size:13px;letter-spacing:1px;background:#fef3c7;color:#92400e;border:1.5px solid #f59e0b;padding:4px 10px;border-radius:6px;display:inline-block;">
+                  ${escapeHtml(item.code)}
+                </span>
+                <button type="button" class="btn-copy-promo" data-copy-code="${escapeHtml(item.code)}" title="Copy code" style="background:none;border:none;cursor:pointer;font-size:13px;color:var(--muted);padding:2px 4px;">
+                  📋
+                </button>
+              </div>
+            </td>
+            <td>
+              <strong style="color:#15803d;font-size:12.5px;">✓ Free Delivery</strong>
+              <div style="font-size:10.5px;color:var(--muted);">Waives ₹50.00 courier fee</div>
+            </td>
+            <td>
+              <span style="font-size:12px;color:var(--ink);">${escapeHtml(item.description || "—")}</span>
+            </td>
+            <td>
+              <span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:3px 8px;border-radius:10px;${item.is_active ? 'background:#dcfce7;color:#15803d;border:1px solid #86efac;' : 'background:#f3f4f6;color:#6b7280;border:1px solid #d1d5db;'}">
+                ${item.is_active ? '● Active' : '○ Inactive'}
+              </span>
+            </td>
+            <td>
+              <span style="font-size:11px;color:var(--muted);">
+                ${item.created_at ? new Date(item.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "Recent"}
+              </span>
+            </td>
+            <td style="text-align:right;">
+              <div style="display:inline-flex;gap:6px;align-items:center;justify-content:flex-end;">
+                <button type="button" class="button button-small ${item.is_active ? 'button-outline' : 'button-dark'}" data-toggle-promo="${item.id}" data-current-status="${item.is_active}" style="padding:5px 10px;font-size:11px;">
+                  ${item.is_active ? 'Deactivate' : 'Activate'}
+                </button>
+                <button type="button" class="text-button delete-button" data-delete-promo="${item.id}" data-code="${escapeHtml(item.code)}" style="font-size:11px;padding:4px 6px;">
+                  Delete
+                </button>
+              </div>
+            </td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+// Form submission for creating new promo code
+const createPromoForm = document.querySelector("#create-promo-form");
+const promoFormMessage = document.querySelector("#promo-form-message");
+const refreshPromosBtn = document.querySelector("#refresh-promos-btn");
+
+createPromoForm?.addEventListener("submit", async e => {
+  e.preventDefault();
+  const codeInput = document.querySelector("#promo-code-input");
+  const descInput = document.querySelector("#promo-desc-input");
+  const cleanCode = (codeInput?.value || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "");
+
+  if (!cleanCode || cleanCode.length < 2) {
+    message(promoFormMessage, "Please enter a valid promo code (letters and numbers).", true);
+    return;
+  }
+
+  const exists = promoCodesList.some(p => p.code.toUpperCase() === cleanCode);
+  if (exists) {
+    message(promoFormMessage, `Promo code "${cleanCode}" already exists.`, true);
+    return;
+  }
+
+  const newPromo = {
+    id: `promo_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+    code: cleanCode,
+    discount_type: "free_delivery",
+    discount_value: 50,
+    description: (descInput?.value || "").trim() || "Free Delivery Voucher",
+    is_active: true,
+    uses_count: 0,
+    created_at: new Date().toISOString()
+  };
+
+  message(promoFormMessage, `Saving promo code "${cleanCode}"…`);
+
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase.from("promo_codes").insert([{
+        code: cleanCode,
+        discount_type: "free_delivery",
+        discount_value: 50,
+        description: newPromo.description,
+        is_active: true
+      }]).select().single();
+
+      if (!error && data) {
+        newPromo.id = data.id;
+      }
+    } catch (dbErr) {
+      console.warn("Supabase promo insert fallback:", dbErr);
+    }
+  }
+
+  promoCodesList.unshift(newPromo);
+  setLocalPromoCodes(promoCodesList);
+
+  message(promoFormMessage, `✓ Promo code "${cleanCode}" created successfully! Customers can now use it at checkout.`);
+  if (codeInput) codeInput.value = "";
+  if (descInput) descInput.value = "";
+  renderPromoCodes();
+});
+
+// Promos List click delegation (toggle, delete, copy)
+const promosListContainer = document.querySelector("#promos-list-container");
+
+promosListContainer?.addEventListener("click", async e => {
+  const copyBtn = e.target.closest(".btn-copy-promo");
+  if (copyBtn) {
+    const code = copyBtn.dataset.copyCode;
+    navigator.clipboard?.writeText(code);
+    copyBtn.textContent = "✓";
+    setTimeout(() => { copyBtn.textContent = "📋"; }, 1500);
+    return;
+  }
+
+  const toggleBtn = e.target.closest("[data-toggle-promo]");
+  if (toggleBtn) {
+    const id = toggleBtn.dataset.togglePromo;
+    const currentStatus = toggleBtn.dataset.currentStatus === "true";
+    const newStatus = !currentStatus;
+
+    toggleBtn.disabled = true;
+    toggleBtn.textContent = "…";
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from("promo_codes").update({ is_active: newStatus }).eq("id", id);
+      } catch (err) {
+        console.warn("Supabase promo toggle fallback:", err);
+      }
+    }
+
+    const item = promoCodesList.find(p => p.id === id);
+    if (item) item.is_active = newStatus;
+    setLocalPromoCodes(promoCodesList);
+    renderPromoCodes();
+    return;
+  }
+
+  const delBtn = e.target.closest("[data-delete-promo]");
+  if (delBtn) {
+    const id = delBtn.dataset.deletePromo;
+    const code = delBtn.dataset.code;
+    if (!confirm(`Are you sure you want to delete promo code "${code}"?`)) return;
+
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from("promo_codes").delete().eq("id", id);
+      } catch (err) {
+        console.warn("Supabase promo delete fallback:", err);
+      }
+    }
+
+    promoCodesList = promoCodesList.filter(p => p.id !== id);
+    setLocalPromoCodes(promoCodesList);
+    renderPromoCodes();
+  }
+});
+
+refreshPromosBtn?.addEventListener("click", () => {
+  loadPromoCodes();
+});
+
 // Initialization
 async function refreshSession() {
   if (!isSupabaseConfigured) {
@@ -1848,7 +2131,7 @@ async function refreshSession() {
   const { data } = await supabase.auth.getSession();
   showSession(data.session);
   if (data.session) {
-    await Promise.all([loadProducts(), loadOrders()]);
+    await Promise.all([loadProducts(), loadOrders(), loadPromoCodes()]);
     renderStockMonitor();
   }
 }
@@ -1859,6 +2142,7 @@ if (isSupabaseConfigured) {
     if (session) {
       loadProducts();
       loadOrders();
+      loadPromoCodes();
     }
   });
 }

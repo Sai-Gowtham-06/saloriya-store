@@ -757,9 +757,13 @@ function openCheckoutModal(productId, initialColour = "") {
   let otpCooldown = 0;
   let otpTimerInterval = null;
 
+  // Promo Code State for Free Delivery
+  let appliedPromo = null; // { code: "FREEDELIVERY", discountType: "free_delivery", discountPaise: 5000 }
+
   function renderCheckout() {
     const subtotalPaise = p.price_paise * qty;
-    const totalPaise = subtotalPaise + TRANSPORT_FEE_PAISE;
+    const deliveryFeePaise = appliedPromo ? 0 : TRANSPORT_FEE_PAISE;
+    const totalPaise = subtotalPaise + deliveryFeePaise;
 
     checkoutContent.innerHTML = `
       <div class="checkout-header">
@@ -881,6 +885,37 @@ function openCheckoutModal(productId, initialColour = "") {
           </div>
         </div>
 
+        <!-- Promo Code Input / Applied Voucher -->
+        <div class="checkout-promo-box" style="margin:4px 0 10px;padding:12px;background:#fffaf6;border:1.5px dashed var(--gold);border-radius:8px;">
+          ${appliedPromo ? `
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+              <div style="display:flex;align-items:center;gap:6px;">
+                <span style="font-size:16px;">🏷️</span>
+                <div>
+                  <span style="font-size:12px;font-weight:700;color:var(--wine);letter-spacing:0.5px;">${escapeHtml(appliedPromo.code)} APPLIED</span>
+                  <div style="font-size:10.5px;color:#15803d;font-weight:600;">✓ Free Delivery (₹50.00 saved!)</div>
+                </div>
+              </div>
+              <button type="button" id="btn-remove-promo" class="text-button" style="color:var(--wine);font-size:11px;font-weight:700;text-decoration:underline;">
+                Remove
+              </button>
+            </div>
+          ` : `
+            <div style="display:flex;gap:6px;">
+              <input 
+                type="text" 
+                id="promo-code-input" 
+                placeholder="Promo Code for Free Delivery (e.g. FREEDELIVERY)" 
+                style="flex:1;text-transform:uppercase;font-weight:700;font-size:11.5px;padding:8px 10px;border:1px solid #d1b490;border-radius:6px;letter-spacing:0.5px;" 
+              />
+              <button type="button" id="btn-apply-promo" class="button button-gold" style="padding:8px 14px;font-size:11.5px;font-weight:700;white-space:nowrap;">
+                Apply
+              </button>
+            </div>
+            <p id="promo-code-msg" style="font-size:11px;margin:5px 0 0;line-height:1.3;display:none;"></p>
+          `}
+        </div>
+
         <div class="checkout-price-breakdown">
           <div class="checkout-line">
             <span>Item Subtotal (${qty} piece${qty > 1 ? 's' : ''}):</span>
@@ -888,7 +923,14 @@ function openCheckoutModal(productId, initialColour = "") {
           </div>
           <div class="checkout-line">
             <span>Insured Courier &amp; Transport Fee:</span>
-            <strong style="color:var(--wine-dark);font-weight:700;">+ ₹50.00</strong>
+            ${appliedPromo ? `
+              <div>
+                <span style="text-decoration:line-through;color:var(--muted);font-size:11px;margin-right:6px;">₹50.00</span>
+                <strong style="color:#15803d;font-weight:700;">FREE ✓</strong>
+              </div>
+            ` : `
+              <strong style="color:var(--wine-dark);font-weight:700;">+ ₹50.00</strong>
+            `}
           </div>
           <div class="checkout-total-line">
             <span>Total Payable:</span>
@@ -944,6 +986,82 @@ function openCheckoutModal(productId, initialColour = "") {
     const phoneInput = checkoutContent.querySelector("#checkout-phone");
     phoneInput?.addEventListener("input", (e) => {
       e.target.value = e.target.value.replace(/\D/g, "").slice(0, 10);
+    });
+
+    // Promo Code Application
+    const promoInput = checkoutContent.querySelector("#promo-code-input");
+    const applyPromoBtn = checkoutContent.querySelector("#btn-apply-promo");
+    const promoMsg = checkoutContent.querySelector("#promo-code-msg");
+    const removePromoBtn = checkoutContent.querySelector("#btn-remove-promo");
+
+    applyPromoBtn?.addEventListener("click", async () => {
+      const code = (promoInput?.value || "").trim().toUpperCase();
+      if (!code) {
+        if (promoMsg) {
+          promoMsg.textContent = "Please enter a promo code.";
+          promoMsg.style.color = "#dc2626";
+          promoMsg.style.display = "block";
+        }
+        return;
+      }
+
+      applyPromoBtn.disabled = true;
+      applyPromoBtn.textContent = "Checking…";
+
+      let matchedPromo = null;
+
+      // 1. Check Supabase promo_codes table
+      if (isSupabaseConfigured) {
+        try {
+          const { data } = await supabase
+            .from("promo_codes")
+            .select("*")
+            .ilike("code", code)
+            .eq("is_active", true)
+            .maybeSingle();
+          if (data) matchedPromo = data;
+        } catch (e) {
+          console.warn("Supabase promo check fallback:", e);
+        }
+      }
+
+      // 2. Check local storage
+      if (!matchedPromo) {
+        try {
+          const localPromos = JSON.parse(localStorage.getItem("saloriya_admin_promo_codes") || "[]");
+          matchedPromo = localPromos.find(p => p.code.toUpperCase() === code && p.is_active);
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      // 3. Fallback default codes
+      if (!matchedPromo && (code === "FREEDELIVERY" || code === "FREESHIP")) {
+        matchedPromo = { code, discount_type: "free_delivery", discount_value: 50 };
+      }
+
+      if (matchedPromo) {
+        appliedPromo = {
+          code: matchedPromo.code,
+          discountType: "free_delivery",
+          discountPaise: 5000,
+          description: matchedPromo.description || "Free Delivery"
+        };
+        renderCheckout();
+      } else {
+        applyPromoBtn.disabled = false;
+        applyPromoBtn.textContent = "Apply";
+        if (promoMsg) {
+          promoMsg.textContent = `Promo code "${code}" is invalid or inactive.`;
+          promoMsg.style.color = "#dc2626";
+          promoMsg.style.display = "block";
+        }
+      }
+    });
+
+    removePromoBtn?.addEventListener("click", () => {
+      appliedPromo = null;
+      renderCheckout();
     });
 
     // OTP Elements
@@ -1156,7 +1274,21 @@ function openCheckoutModal(productId, initialColour = "") {
         return;
       }
 
-      const orderData = { customerName, phone, street, city, state, pincode, subtotalPaise, totalPaise, qty, chosenColour, phoneVerificationToken };
+      const orderData = { 
+        customerName, 
+        phone, 
+        street, 
+        city, 
+        state, 
+        pincode, 
+        subtotalPaise, 
+        totalPaise, 
+        qty, 
+        chosenColour, 
+        phoneVerificationToken,
+        promoCode: appliedPromo ? appliedPromo.code : null,
+        discountPaise: appliedPromo ? 5000 : 0
+      };
 
       // IF ONLINE / PREPAID: DO NOT PLACE ORDER YET!
       // Customer must complete payment and enter genuine 12-digit UTR first!
@@ -1192,11 +1324,21 @@ function openCheckoutModal(productId, initialColour = "") {
             id: orderIdKey,
             customer_name: customerName,
             phone,
-            address: { street, city, state, pincode, transport_fee_paise: TRANSPORT_FEE_PAISE, phone_verified: true },
+            address: { 
+              street, 
+              city, 
+              state, 
+              pincode, 
+              transport_fee_paise: deliveryFeePaise, 
+              phone_verified: true,
+              promo_code: appliedPromo ? appliedPromo.code : null,
+              discount_paise: appliedPromo ? 5000 : 0
+            },
             payment_method: "cod",
             payment_status: "pending",
             order_status: "confirmed",
-            total_paise: totalPaise
+            total_paise: totalPaise,
+            promo_code: appliedPromo ? appliedPromo.code : null
           });
 
         if (orderErr) {
@@ -1305,7 +1447,9 @@ function openCheckoutModal(productId, initialColour = "") {
         <div class="payment-amount-card">
           <span>Total Payable Amount</span>
           <strong class="payment-amount-val">${money(orderData.totalPaise)}</strong>
-          <small>Item: ${money(orderData.subtotalPaise)} + Transport &amp; Packaging: ₹50.00</small>
+          <small>
+            Item: ${money(orderData.subtotalPaise)} + Transport: ${orderData.promoCode ? `<strong style="color:#15803d;">FREE (Promo: ${escapeHtml(orderData.promoCode)})</strong>` : '₹50.00'}
+          </small>
         </div>
 
         <!-- Mobile UPI App Redirection Area -->
@@ -1547,12 +1691,15 @@ function openCheckoutModal(productId, initialColour = "") {
                 pincode: orderData.pincode,
                 has_screenshot: true,
                 screenshot_data: uploadedScreenshotBase64,
-                transport_fee_paise: TRANSPORT_FEE_PAISE
+                transport_fee_paise: orderData.promoCode ? 0 : TRANSPORT_FEE_PAISE,
+                promo_code: orderData.promoCode || null,
+                discount_paise: orderData.discountPaise || 0
               },
               payment_method: "prepaid",
               payment_status: "awaiting_verification",
               order_status: "pending",
-              total_paise: orderData.totalPaise
+              total_paise: orderData.totalPaise,
+              promo_code: orderData.promoCode || null
             });
 
           if (orderErr) {

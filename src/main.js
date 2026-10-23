@@ -1032,10 +1032,13 @@ function openCheckoutModal(productId, initialColour = "") {
         if (otpPanel) otpPanel.style.display = "block";
         if (otpPhoneDisplay) otpPhoneDisplay.textContent = `+91 ${cleanPhone}`;
         if (otpStatusMsg) {
-          otpStatusMsg.textContent = data.testOtp 
-            ? `✓ OTP sent! (Dev Test Code: ${data.testOtp})` 
-            : "✓ OTP sent to your mobile. Enter the 6-digit code below.";
-          otpStatusMsg.style.color = "#166534";
+          if (data.unconfiguredGateway) {
+            otpStatusMsg.textContent = `✓ 6-digit verification code generated for +91 ${cleanPhone}. (To receive live SMS on phones, add FAST2SMS_API_KEY in Vercel settings).`;
+            otpStatusMsg.style.color = "var(--wine)";
+          } else {
+            otpStatusMsg.textContent = `✓ 6-digit OTP sent to +91 ${cleanPhone}. Please check your SMS messages.`;
+            otpStatusMsg.style.color = "#166534";
+          }
         }
 
         startOtpCountdown(data.cooldown || 60);
@@ -1044,19 +1047,15 @@ function openCheckoutModal(productId, initialColour = "") {
         return true;
       } catch (err) {
         console.warn("OTP send error:", err);
-        // Fallback for offline/local environments without API server
-        if (otpPanel) otpPanel.style.display = "block";
-        if (otpPhoneDisplay) otpPhoneDisplay.textContent = `+91 ${cleanPhone}`;
-        startOtpCountdown(60);
         if (otpStatusMsg) {
-          otpStatusMsg.textContent = "Verification mode active. Please enter 6-digit code.";
-          otpStatusMsg.style.color = "var(--wine)";
+          otpStatusMsg.textContent = err.message || "Failed to send OTP. Please check your phone number.";
+          otpStatusMsg.style.color = "#dc2626";
         }
         if (btnSendOtpTrigger) {
           btnSendOtpTrigger.disabled = false;
-          btnSendOtpTrigger.textContent = "Verify ⚡";
+          btnSendOtpTrigger.textContent = "Send OTP ⚡";
         }
-        return true;
+        return false;
       }
     }
 
@@ -1270,11 +1269,28 @@ function openCheckoutModal(productId, initialColour = "") {
     const note = "SALORIYA Jewellery Order";
     const qrCodeUrl = "/upi-qr.jpg";
 
-    // Intent URLs for native mobile redirection (Android & iOS)
-    const upiUniversal = `upi://pay?pa=${upiId}&pn=${encodeURIComponent(payeeName)}&am=${amountInRupees}&cu=INR&tn=${encodeURIComponent(note)}`;
-    const upiGPay = `tez://upi/pay?pa=${upiId}&pn=${encodeURIComponent(payeeName)}&am=${amountInRupees}&cu=INR&tn=${encodeURIComponent(note)}`;
-    const upiPhonePe = `phonepe://pay?pa=${upiId}&pn=${encodeURIComponent(payeeName)}&am=${amountInRupees}&cu=INR&tn=${encodeURIComponent(note)}`;
-    const upiPaytm = `paytmmp://pay?pa=${upiId}&pn=${encodeURIComponent(payeeName)}&am=${amountInRupees}&cu=INR&tn=${encodeURIComponent(note)}`;
+    // Device detection for optimal deep-linking protocol
+    const isAndroid = /Android/i.test(navigator.userAgent);
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const isMobile = isAndroid || isIOS || window.innerWidth <= 768;
+
+    // Standard NPCI-compliant UPI parameters
+    const upiParams = `pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(payeeName)}&am=${amountInRupees}&cu=INR&tn=${encodeURIComponent(note)}`;
+
+    // Android Chrome requires explicit Android Intent format with package target to directly launch Paytm, PhonePe, or GPay
+    // iOS Safari requires registered native app URL schemes
+    const upiUniversal = isAndroid
+      ? `intent://pay?${upiParams}#Intent;scheme=upi;end;`
+      : `upi://pay?${upiParams}`;
+    const upiGPay = isAndroid
+      ? `intent://pay?${upiParams}#Intent;scheme=upi;package=com.google.android.apps.nbu.paisa.user;end;`
+      : `tez://upi/pay?${upiParams}`;
+    const upiPhonePe = isAndroid
+      ? `intent://pay?${upiParams}#Intent;scheme=upi;package=com.phonepe.app;end;`
+      : `phonepe://pay?${upiParams}`;
+    const upiPaytm = isAndroid
+      ? `intent://pay?${upiParams}#Intent;scheme=upi;package=net.one97.paytm;end;`
+      : `paytmmp://pay?${upiParams}`;
 
     checkoutContent.innerHTML = `
       <div class="online-payment-portal">
@@ -1386,29 +1402,36 @@ function openCheckoutModal(productId, initialColour = "") {
     `;
 
     // Direct Mobile UPI App Redirection Handlers
-    const dispatchUpiUrl = (url) => {
+    const launchUpiApp = (e, url, appName) => {
+      if (!isMobile) {
+        e.preventDefault();
+        const qrWrap = checkoutContent.querySelector(".payment-qr-wrap");
+        if (qrWrap) qrWrap.scrollIntoView({ behavior: "smooth", block: "center" });
+        const hint = checkoutContent.querySelector("#upi-intent-fallback-hint");
+        if (hint) {
+          hint.innerHTML = `<span style="color:var(--wine);font-weight:700;">📱 Desktop Browser Detected:</span> Please scan the QR code below with <strong>${appName}</strong> on your mobile phone, or copy the UPI ID.`;
+        }
+        return;
+      }
+
+      // On mobile devices, allow the native anchor navigation or explicitly set window.location
       window.location.href = url;
     };
 
     checkoutContent.querySelector("#btn-pay-universal")?.addEventListener("click", (e) => {
-      e.preventDefault();
-      dispatchUpiUrl(upiUniversal);
+      launchUpiApp(e, upiUniversal, "Any UPI App");
     });
     checkoutContent.querySelector(".gpay-link")?.addEventListener("click", (e) => {
-      e.preventDefault();
-      dispatchUpiUrl(upiGPay);
+      launchUpiApp(e, upiGPay, "Google Pay");
     });
     checkoutContent.querySelector(".phonepe-link")?.addEventListener("click", (e) => {
-      e.preventDefault();
-      dispatchUpiUrl(upiPhonePe);
+      launchUpiApp(e, upiPhonePe, "PhonePe");
     });
     checkoutContent.querySelector(".paytm-link")?.addEventListener("click", (e) => {
-      e.preventDefault();
-      dispatchUpiUrl(upiPaytm);
+      launchUpiApp(e, upiPaytm, "Paytm");
     });
     checkoutContent.querySelector(".cred-link")?.addEventListener("click", (e) => {
-      e.preventDefault();
-      dispatchUpiUrl(upiUniversal);
+      launchUpiApp(e, upiUniversal, "Other UPI App");
     });
 
     // Copy UPI button

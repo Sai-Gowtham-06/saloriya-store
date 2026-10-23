@@ -1,7 +1,55 @@
 import { defineConfig } from "vite";
 import { resolve } from "path";
+import sendOtpHandler from "./api/otp/send.js";
+import verifyOtpHandler from "./api/otp/verify.js";
+
+function vercelApiDevPlugin() {
+  return {
+    name: "vercel-api-dev-server",
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        const url = req.url?.split("?")[0];
+        if (url === "/api/otp/send" || url === "/api/otp/verify") {
+          let body = {};
+          if (req.method === "POST") {
+            const buffers = [];
+            for await (const chunk of req) {
+              buffers.push(chunk);
+            }
+            const raw = Buffer.concat(buffers).toString();
+            try {
+              body = JSON.parse(raw);
+            } catch (e) {
+              body = {};
+            }
+          }
+          req.body = body;
+
+          // Express/Vercel helper polyfill for local dev server
+          res.status = function (code) {
+            this.statusCode = code;
+            return this;
+          };
+          res.json = function (obj) {
+            this.setHeader("Content-Type", "application/json");
+            this.end(JSON.stringify(obj));
+            return this;
+          };
+
+          if (url === "/api/otp/send") {
+            return sendOtpHandler(req, res);
+          } else {
+            return verifyOtpHandler(req, res);
+          }
+        }
+        next();
+      });
+    },
+  };
+}
 
 export default defineConfig({
+  plugins: [vercelApiDevPlugin()],
   build: {
     rollupOptions: {
       input: {
@@ -11,3 +59,4 @@ export default defineConfig({
     },
   },
 });
+

@@ -111,9 +111,9 @@ export default async function handler(req, res) {
       }
     }
 
-    // 7. Dispatch SMS via SMS Gateway (Fast2SMS / Twilio / MSG91)
+    // 7. Dispatch SMS via SMS Gateway (Fast2SMS / 2Factor / Twilio / MSG91)
     let smsSent = false;
-    const smsProvider = process.env.SMS_PROVIDER || "FAST2SMS";
+    let gatewayError = null;
 
     if (process.env.FAST2SMS_API_KEY) {
       try {
@@ -121,7 +121,7 @@ export default async function handler(req, res) {
         const f2sRes = await fetch("https://www.fast2sms.com/dev/bulkV2", {
           method: "POST",
           headers: {
-            "authorization": process.env.FAST2SMS_API_KEY,
+            "authorization": process.env.FAST2SMS_API_KEY.trim(),
             "Content-Type": "application/json"
           },
           body: JSON.stringify({
@@ -131,15 +131,36 @@ export default async function handler(req, res) {
           })
         });
         const f2sData = await f2sRes.json();
-        if (f2sData.return) smsSent = true;
+        if (f2sData.return === true) {
+          smsSent = true;
+        } else {
+          gatewayError = Array.isArray(f2sData.message) ? f2sData.message.join(", ") : (f2sData.message || "Fast2SMS delivery failed");
+          console.error("Fast2SMS error:", f2sData);
+        }
       } catch (smsErr) {
-        console.error("Fast2SMS delivery error:", smsErr);
+        gatewayError = smsErr.message;
+        console.error("Fast2SMS dispatch error:", smsErr);
+      }
+    } else if (process.env.TWO_FACTOR_API_KEY) {
+      try {
+        // 2Factor.in SMS Gateway (India)
+        const apiKey = process.env.TWO_FACTOR_API_KEY.trim();
+        const tfRes = await fetch(`https://2factor.in/v3/API/V1/${apiKey}/SMS/+91${cleanPhone}/${otp}/SALORIYA+OTP`);
+        const tfData = await tfRes.json();
+        if (tfData.Status === "Success") {
+          smsSent = true;
+        } else {
+          gatewayError = tfData.Details || "2Factor.in SMS delivery failed";
+        }
+      } catch (tfErr) {
+        gatewayError = tfErr.message;
+        console.error("2Factor dispatch error:", tfErr);
       }
     } else if (process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_PHONE_NUMBER) {
       try {
         const twilioUrl = `https://api.twilio.com/2010-04-01/Accounts/${process.env.TWILIO_ACCOUNT_SID}/Messages.json`;
         const auth = Buffer.from(`${process.env.TWILIO_ACCOUNT_SID}:${process.env.TWILIO_AUTH_TOKEN}`).toString("base64");
-        await fetch(twilioUrl, {
+        const twRes = await fetch(twilioUrl, {
           method: "POST",
           headers: {
             "Authorization": `Basic ${auth}`,
@@ -151,24 +172,48 @@ export default async function handler(req, res) {
             Body: `Your SALORIYA order verification OTP is ${otp}. Valid for 5 minutes. Please do not share this code.`
           })
         });
-        smsSent = true;
+        const twData = await twRes.json();
+        if (twRes.ok) {
+          smsSent = true;
+        } else {
+          gatewayError = twData.message || "Twilio SMS dispatch failed";
+        }
       } catch (twErr) {
+        gatewayError = twErr.message;
         console.error("Twilio delivery error:", twErr);
       }
     }
 
-    // For test / development without live SMS credits configured, include test note in server logs
-    console.log(`[SALORIYA OTP] Phone: +91 ${cleanPhone} | OTP Code: ${otp} (Valid 5 mins)`);
+    // Always log OTP securely to serverless logs for store admin visibility
+    console.log(`[SALORIYA REAL SMS] Mobile: +91 ${cleanPhone} | OTP: ${otp} | Sent: ${smsSent}`);
 
-    // In non-production or test environments where SMS key is not configured, pass simulated indicator
-    const isMock = !smsSent && !process.env.FAST2SMS_API_KEY && !process.env.TWILIO_ACCOUNT_SID;
+    // If an SMS provider was configured but returned an error (e.g. invalid key or out of credits)
+    if (gatewayError && !smsSent) {
+      return res.status(502).json({
+        success: false,
+        error: `SMS Gateway Error: ${gatewayError}. Please check your SMS provider balance/configuration.`
+      });
+    }
+
+    // If no live SMS provider is configured yet in Vercel
+    const hasSmsConfig = Boolean(process.env.FAST2SMS_API_KEY || process.env.TWO_FACTOR_API_KEY || process.env.TWILIO_ACCOUNT_SID);
+
+    if (!hasSmsConfig) {
+      // In development / demo when credentials haven't been entered in Vercel yet
+      return res.status(200).json({
+        success: true,
+        message: "SMS gateway key not yet configured in Vercel. OTP generated in server logs.",
+        expiresIn: 300,
+        cooldown: 60,
+        unconfiguredGateway: true
+      });
+    }
 
     return res.status(200).json({
       success: true,
-      message: "OTP sent successfully to your mobile number.",
+      message: "OTP sent successfully to your mobile number via SMS.",
       expiresIn: 300,
-      cooldown: 60,
-      ...(isMock ? { testOtp: otp, note: "SMS Gateway simulated: OTP printed to console or provided here for local testing." } : {})
+      cooldown: 60
     });
   } catch (err) {
     console.error("OTP Send Handler Error:", err);

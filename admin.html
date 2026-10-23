@@ -48,7 +48,20 @@
             </div>
             <label>Colours (comma separated)<input name="colours" placeholder="Gold, Rose Gold, Silver" /></label>
             <label>Stock quantity<input name="stock" type="number" required min="0" step="1" value="1" /></label>
-            <label>Product images<input name="images" type="file" accept="image/*" multiple /></label>
+            <label>Product images
+              <div class="file-dropzone" id="file-dropzone">
+                <input name="images" id="image-upload-input" type="file" accept="image/*" multiple class="file-input-hidden" />
+                <div class="dropzone-content">
+                  <svg class="dropzone-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21 15 16 10 5 21"/>
+                  </svg>
+                  <p class="dropzone-text"><strong>Choose images</strong> or drag &amp; drop here</p>
+                  <span class="dropzone-sub">PNG, JPG, WEBP, GIF up to 5 MB</span>
+                </div>
+              </div>
+            </label>
             <div id="image-previews" class="image-previews"></div>
             <p class="hint">Upload photos in the order of your colours (1st image for 1st colour, 2nd for 2nd colour), or name your files with the colour name (e.g. <code>green-butterfly.jpg</code>). Published images are public.</p>
             <label class="checkbox-label"><input name="published" type="checkbox" /> Publish in storefront</label>

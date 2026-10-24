@@ -2,21 +2,22 @@ import React, { useState, useEffect } from "react";
 import { supabase, isSupabaseConfigured } from "../../supabase.js";
 
 const DEFAULT_PROMOS = [
-  { code: "FREEDELIVERY", discount_type: "free_delivery", description: "Free Courier & Delivery (₹50 OFF)", is_active: true },
-  { code: "FREESHIP", discount_type: "free_delivery", description: "Free Courier & Delivery", is_active: true },
-  { code: "GOLD2026", discount_type: "free_delivery", description: "Gold Festival Special Free Delivery", is_active: true }
+  { code: "FREEDELIVERY", discount_type: "free_delivery", description: "Complimentary Free Transport & Packaging (Waives ₹50 delivery)", is_active: true },
+  { code: "FREESHIP", discount_type: "free_delivery", description: "Free Courier & Delivery on Orders", is_active: true },
+  { code: "GOLD2026", discount_type: "free_delivery", description: "Special Festival Free Delivery Voucher", is_active: true }
 ];
 
-export default function AdminPromoManager() {
+export default function AdminPromoManager({ onPromosUpdated }) {
   const [promos, setPromos] = useState([]);
   const [newCode, setNewCode] = useState("");
   const [newDesc, setNewDesc] = useState("");
+  const [msg, setMsg] = useState("");
 
   const loadPromos = async () => {
     let list = [];
     if (isSupabaseConfigured) {
       try {
-        const { data, error } = await supabase.from("promo_codes").select("*");
+        const { data, error } = await supabase.from("promo_codes").select("*").order("created_at", { ascending: false });
         if (!error && Array.isArray(data) && data.length > 0) {
           list = data;
         }
@@ -36,6 +37,7 @@ export default function AdminPromoManager() {
     }
 
     setPromos(list);
+    if (onPromosUpdated) onPromosUpdated(list.length);
   };
 
   useEffect(() => {
@@ -44,13 +46,14 @@ export default function AdminPromoManager() {
 
   const handleAddPromo = async (e) => {
     e.preventDefault();
-    const code = newCode.trim().toUpperCase();
+    const code = newCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
     if (!code) return;
 
+    setMsg("");
     const newPromo = {
       code,
       discount_type: "free_delivery",
-      description: newDesc.trim() || "Free Delivery Waived (₹50 OFF)",
+      description: newDesc.trim() || "Free Transport & Packaging (Waives ₹50 fee)",
       is_active: true,
       created_at: new Date().toISOString()
     };
@@ -66,9 +69,13 @@ export default function AdminPromoManager() {
     setPromos(updated);
     setNewCode("");
     setNewDesc("");
+    setMsg(`✓ Promo code "${code}" added successfully.`);
+    if (onPromosUpdated) onPromosUpdated(updated.length);
   };
 
   const handleDeletePromo = async (code) => {
+    if (!window.confirm(`Delete promo code "${code}"? Customers will no longer be able to use it.`)) return;
+
     try {
       if (isSupabaseConfigured) {
         await supabase.from("promo_codes").delete().eq("code", code);
@@ -78,71 +85,212 @@ export default function AdminPromoManager() {
     const updated = promos.filter((p) => p.code !== code);
     localStorage.setItem("saloriya_admin_promo_codes", JSON.stringify(updated));
     setPromos(updated);
+    setMsg(`Promo code "${code}" removed.`);
+    if (onPromosUpdated) onPromosUpdated(updated.length);
   };
 
   return (
-    <div className="admin-panel" style={{ marginBottom: "40px" }}>
-      <div className="section-heading" style={{ marginBottom: "16px" }}>
-        <div>
-          <p className="eyebrow">DISCOUNT OFFERS</p>
-          <h2 style={{ fontSize: "24px" }}>Promo &amp; Free Delivery Codes</h2>
+    <div id="view-promos" className="admin-tab-view active">
+      <section className="admin-panel">
+        <div className="inventory-heading" style={{ marginBottom: "16px" }}>
+          <div>
+            <p className="eyebrow" style={{ color: "var(--wine)", fontSize: "11px", margin: "0 0 4px" }}>
+              MARKETING &amp; DISCOUNTS
+            </p>
+            <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: "22px", margin: "0 0 4px" }}>
+              Promo Codes (Free Delivery)
+            </h2>
+            <p className="hint" style={{ margin: 0 }}>
+              Create and manage voucher codes to give customers complimentary free delivery (waives the ₹50.00 courier fee).
+            </p>
+          </div>
+          <button className="button button-outline" type="button" onClick={loadPromos}>
+            ↻ Refresh Codes
+          </button>
         </div>
-      </div>
 
-      {/* Add New Promo Form */}
-      <form onSubmit={handleAddPromo} style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "20px" }}>
-        <input
-          type="text"
-          placeholder="Promo Code (e.g. FESTIVE50)"
-          value={newCode}
-          onChange={(e) => setNewCode(e.target.value.toUpperCase())}
-          style={{ flex: 1, minWidth: "180px" }}
-          required
-        />
-        <input
-          type="text"
-          placeholder="Description (e.g. Free Delivery on Orders)"
-          value={newDesc}
-          onChange={(e) => setNewDesc(e.target.value)}
-          style={{ flex: 1.5, minWidth: "220px" }}
-        />
-        <button type="submit" className="button button-gold" style={{ padding: "8px 18px", fontSize: "12px" }}>
-          + Add Promo Code
-        </button>
-      </form>
-
-      {/* List */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-        {promos.map((p) => (
+        {/* Promo Creator Card */}
+        <div
+          className="promo-creator-card"
+          style={{
+            background: "#fffaf6",
+            border: "1.5px solid var(--gold)",
+            borderRadius: "12px",
+            padding: "20px",
+            marginBottom: "20px",
+            boxShadow: "0 4px 16px rgba(134,30,56,0.06)"
+          }}
+        >
           <div
-            key={p.code}
             style={{
               display: "flex",
-              justifyContent: "space-between",
               alignItems: "center",
-              padding: "10px 14px",
-              background: "#ffffff",
-              border: "1px solid var(--line)",
-              borderRadius: "6px"
+              justifyContent: "space-between",
+              marginBottom: "14px",
+              borderBottom: "1px solid rgba(209,180,144,0.3)",
+              paddingBottom: "10px"
             }}
           >
-            <div>
-              <strong style={{ color: "var(--wine-dark)", fontSize: "13px" }}>🏷️ {p.code}</strong>
-              <span style={{ fontSize: "12px", color: "var(--muted)", marginLeft: "10px" }}>
-                {p.description} (Waives ₹50 delivery)
-              </span>
-            </div>
-            <button
-              type="button"
-              className="button"
-              style={{ padding: "4px 10px", fontSize: "10.5px", background: "#fee2e2", color: "#b91c1c", border: "1px solid #fca5a5" }}
-              onClick={() => handleDeletePromo(p.code)}
-            >
-              Remove
-            </button>
+            <h3 style={{ fontFamily: "'Playfair Display', serif", fontSize: "17px", color: "var(--wine)", margin: 0 }}>
+              + Create New Promo Code
+            </h3>
+            <span className="eyebrow" style={{ fontSize: "10px", color: "var(--gold)" }}>
+              MANUAL VOUCHER CREATOR
+            </span>
           </div>
-        ))}
-      </div>
+
+          <form
+            id="create-promo-form"
+            onSubmit={handleAddPromo}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+              gap: "14px",
+              alignItems: "end"
+            }}
+          >
+            <label style={{ fontSize: "12px", fontWeight: 600, display: "flex", flexDirection: "column", gap: "6px" }}>
+              Promo Code (Letters &amp; Numbers) *
+              <input
+                type="text"
+                name="code"
+                id="promo-code-input"
+                placeholder="e.g. FREEDELIVERY, SALORIYA50"
+                value={newCode}
+                onChange={(e) => setNewCode(e.target.value.toUpperCase())}
+                required
+                style={{
+                  textTransform: "uppercase",
+                  fontWeight: 700,
+                  letterSpacing: "1px",
+                  padding: "10px",
+                  border: "1.5px solid #d1b490",
+                  borderRadius: "6px",
+                  fontSize: "13px"
+                }}
+              />
+            </label>
+
+            <label style={{ fontSize: "12px", fontWeight: 600, display: "flex", flexDirection: "column", gap: "6px" }}>
+              Benefit Type *
+              <select
+                name="discountType"
+                id="promo-type-select"
+                style={{
+                  padding: "10px",
+                  border: "1.5px solid #d1b490",
+                  borderRadius: "6px",
+                  fontSize: "13px",
+                  background: "#fff"
+                }}
+              >
+                <option value="free_delivery">Free Delivery (₹50.00 OFF Courier Fee)</option>
+              </select>
+            </label>
+
+            <label style={{ fontSize: "12px", fontWeight: 600, display: "flex", flexDirection: "column", gap: "6px" }}>
+              Voucher Note / Description
+              <input
+                type="text"
+                name="description"
+                id="promo-desc-input"
+                placeholder="e.g. Festival Free Courier Offer"
+                value={newDesc}
+                onChange={(e) => setNewDesc(e.target.value)}
+                style={{
+                  padding: "10px",
+                  border: "1.5px solid #d1b490",
+                  borderRadius: "6px",
+                  fontSize: "13px"
+                }}
+              />
+            </label>
+
+            <div>
+              <button
+                type="submit"
+                id="btn-save-promo"
+                className="button button-gold"
+                style={{ width: "100%", padding: "11px 18px", fontSize: "13px", fontWeight: 700 }}
+              >
+                + Add Promo Code
+              </button>
+            </div>
+          </form>
+
+          {msg && (
+            <p className="form-message" role="status" style={{ margin: "10px 0 0", color: "var(--wine)" }}>
+              {msg}
+            </p>
+          )}
+        </div>
+
+        {/* Existing Promo Codes List */}
+        <div
+          className="promos-table-wrap"
+          style={{
+            background: "#ffffff",
+            border: "1px solid #e5e7eb",
+            borderRadius: "12px",
+            overflow: "hidden",
+            boxShadow: "0 2px 8px rgba(0,0,0,0.04)"
+          }}
+        >
+          <div id="promos-list-container">
+            {promos.length === 0 ? (
+              <div style={{ padding: "30px", textAlign: "center", color: "var(--muted)" }}>
+                No active promo codes. Use the creator above to add one.
+              </div>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                <thead>
+                  <tr style={{ background: "#fbf7f4", borderBottom: "1px solid var(--line)", textAlign: "left" }}>
+                    <th style={{ padding: "12px 16px" }}>Voucher Code</th>
+                    <th style={{ padding: "12px 16px" }}>Benefit</th>
+                    <th style={{ padding: "12px 16px" }}>Description</th>
+                    <th style={{ padding: "12px 16px", textAlign: "right" }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {promos.map((p) => (
+                    <tr key={p.code} style={{ borderBottom: "1px solid var(--line-subtle)" }}>
+                      <td style={{ padding: "12px 16px" }}>
+                        <span
+                          style={{
+                            fontFamily: "monospace",
+                            fontWeight: 700,
+                            background: "#faecf0",
+                            color: "var(--wine)",
+                            padding: "4px 8px",
+                            borderRadius: "4px",
+                            letterSpacing: "0.5px"
+                          }}
+                        >
+                          🏷️ {p.code}
+                        </span>
+                      </td>
+                      <td style={{ padding: "12px 16px" }}>
+                        <span style={{ color: "#15803d", fontWeight: 600 }}>Free Courier (₹50 OFF)</span>
+                      </td>
+                      <td style={{ padding: "12px 16px", color: "var(--muted)" }}>{p.description}</td>
+                      <td style={{ padding: "12px 16px", textAlign: "right" }}>
+                        <button
+                          type="button"
+                          className="button button-small"
+                          style={{ background: "#fee2e2", color: "#b91c1c", border: "1px solid #fecaca" }}
+                          onClick={() => handleDeletePromo(p.code)}
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

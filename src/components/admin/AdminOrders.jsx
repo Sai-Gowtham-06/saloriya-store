@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { supabase, isSupabaseConfigured } from "../../supabase.js";
 
-export default function AdminOrders({ orders, onOrderUpdated }) {
+export default function AdminOrders({ orders, onOrderUpdated, onOpenRecordOrder }) {
   const [paymentFilter, setPaymentFilter] = useState("all"); // 'all' | 'prepaid' | 'cod'
   const [statusFilter, setStatusFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -36,6 +36,24 @@ export default function AdminOrders({ orders, onOrderUpdated }) {
     onOrderUpdated();
   };
 
+  const handleDeleteOrder = async (orderId) => {
+    if (!window.confirm(`Delete order record #${orderId}? This cannot be undone.`)) return;
+
+    try {
+      if (isSupabaseConfigured) {
+        await supabase.from("orders").delete().eq("order_id", orderId);
+      }
+    } catch (e) {}
+
+    try {
+      const local = JSON.parse(localStorage.getItem("saloriya_admin_orders") || "[]");
+      const filtered = local.filter((o) => o.order_id !== orderId);
+      localStorage.setItem("saloriya_admin_orders", JSON.stringify(filtered));
+    } catch (e) {}
+
+    onOrderUpdated();
+  };
+
   const filteredOrders = orders.filter((o) => {
     // Payment filter
     if (paymentFilter === "prepaid" && o.payment_method !== "prepaid") return false;
@@ -60,17 +78,16 @@ export default function AdminOrders({ orders, onOrderUpdated }) {
   const countPrepaid = orders.filter((o) => o.payment_method === "prepaid").length;
   const countCod = orders.filter((o) => o.payment_method !== "prepaid").length;
 
-  return (
-    <div className="admin-panel" style={{ marginBottom: "30px" }}>
-      <div className="section-heading" style={{ marginBottom: "16px" }}>
-        <div>
-          <p className="eyebrow">CUSTOMER ORDERS</p>
-          <h2 style={{ fontSize: "28px" }}>Orders Dashboard</h2>
-        </div>
-      </div>
+  const countPending = orders.filter((o) => o.status === "pending").length;
+  const countConfirmed = orders.filter((o) => o.status === "confirmed" || !o.status).length;
+  const countShipped = orders.filter((o) => o.status === "shipped" || o.status === "dispatched").length;
+  const countDelivered = orders.filter((o) => o.status === "delivered").length;
+  const countCancelled = orders.filter((o) => o.status === "cancelled").length;
 
-      {/* Payment Type Tabs */}
-      <div className="orders-payment-type-tabs" style={{ marginBottom: "16px" }}>
+  return (
+    <div id="view-orders" className="admin-tab-view active">
+      {/* Payment Mode Tabs */}
+      <div className="orders-payment-type-tabs" style={{ marginBottom: "18px" }}>
         <button
           type="button"
           className={`payment-type-tab ${paymentFilter === "all" ? "active" : ""}`}
@@ -100,168 +117,252 @@ export default function AdminOrders({ orders, onOrderUpdated }) {
         </button>
       </div>
 
-      {/* Toolbar */}
-      <div className="orders-toolbar" style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginBottom: "18px" }}>
-        <input
-          type="text"
-          className="orders-search-box"
-          placeholder="Search by customer name, phone, order ID…"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          style={{ flex: 1, minWidth: "220px" }}
-        />
-        <select
-          className="toolbar-select"
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          style={{ minWidth: "150px" }}
-        >
-          <option value="all">All Statuses</option>
-          <option value="confirmed">Confirmed</option>
-          <option value="dispatched">Dispatched</option>
-          <option value="delivered">Delivered</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
+      {/* Orders Toolbar */}
+      <div className="orders-toolbar">
+        <div className="orders-search-box">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <input
+            type="text"
+            id="orders-search"
+            placeholder="Search orders by customer, phone, product, or Order ID…"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+
+        <div className="orders-filter-chips">
+          <button
+            type="button"
+            className={`filter-chip ${statusFilter === "all" ? "active" : ""}`}
+            onClick={() => setStatusFilter("all")}
+          >
+            All ({orders.length})
+          </button>
+          <button
+            type="button"
+            className={`filter-chip ${statusFilter === "pending" ? "active" : ""}`}
+            onClick={() => setStatusFilter("pending")}
+          >
+            Pending ({countPending})
+          </button>
+          <button
+            type="button"
+            className={`filter-chip ${statusFilter === "confirmed" ? "active" : ""}`}
+            onClick={() => setStatusFilter("confirmed")}
+          >
+            Confirmed ({countConfirmed})
+          </button>
+          <button
+            type="button"
+            className={`filter-chip ${statusFilter === "shipped" ? "active" : ""}`}
+            onClick={() => setStatusFilter("shipped")}
+          >
+            Shipped ({countShipped})
+          </button>
+          <button
+            type="button"
+            className={`filter-chip ${statusFilter === "delivered" ? "active" : ""}`}
+            onClick={() => setStatusFilter("delivered")}
+          >
+            Delivered ({countDelivered})
+          </button>
+          <button
+            type="button"
+            className={`filter-chip ${statusFilter === "cancelled" ? "active" : ""}`}
+            onClick={() => setStatusFilter("cancelled")}
+          >
+            Cancelled ({countCancelled})
+          </button>
+        </div>
+
+        <div className="orders-toolbar-actions">
+          <button type="button" className="button button-outline button-small" onClick={onOrderUpdated}>
+            ↻ Refresh Orders
+          </button>
+          {onOpenRecordOrder && (
+            <button type="button" className="button button-dark button-small" onClick={onOpenRecordOrder}>
+              + New Order
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Orders List */}
-      {filteredOrders.length === 0 ? (
-        <div style={{ textAlign: "center", padding: "40px 20px", color: "var(--muted)", background: "#faf4f0", borderRadius: "8px" }}>
-          No orders found matching the selected filters.
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-          {filteredOrders.map((order) => {
+      {/* Orders List Container */}
+      <div id="orders-list-container" className="orders-list-container">
+        {filteredOrders.length === 0 ? (
+          <div className="empty-orders-box">
+            <p style={{ fontSize: "28px", marginBottom: "8px" }}>📦</p>
+            <strong>No orders match your filters</strong>
+            <p className="hint">Try switching payment tab or clearing search filters.</p>
+          </div>
+        ) : (
+          filteredOrders.map((order) => {
             const isPrepaid = order.payment_method === "prepaid";
             const status = order.status || "confirmed";
 
             return (
-              <div
-                key={order.order_id}
-                style={{
-                  background: "#ffffff",
-                  border: "1px solid var(--line)",
-                  borderRadius: "8px",
-                  padding: "16px",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.03)"
-                }}
-              >
-                <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "8px", borderBottom: "1px solid var(--line-subtle)", paddingBottom: "10px", marginBottom: "12px" }}>
-                  <div>
-                    <strong style={{ fontSize: "16px", color: "var(--wine-dark)" }}>#{order.order_id}</strong>
-                    <span style={{ fontSize: "12px", color: "var(--muted)", marginLeft: "10px" }}>
-                      {new Date(order.created_at).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+              <div key={order.order_id} className="order-card">
+                <div className="order-card-header">
+                  <div className="order-header-left">
+                    <span className="order-id-badge" title="Order ID">
+                      #{order.order_id}
+                    </span>
+                    <span className="order-date">
+                      {new Date(order.created_at).toLocaleString("en-IN", {
+                        dateStyle: "medium",
+                        timeStyle: "short"
+                      })}
                     </span>
                   </div>
-                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                    <span
-                      style={{
-                        padding: "3px 8px",
-                        borderRadius: "20px",
-                        fontSize: "11px",
-                        fontWeight: 700,
-                        background: isPrepaid ? "#f3e8ff" : "#fef3c7",
-                        color: isPrepaid ? "#6b21a8" : "#92400e"
-                      }}
-                    >
-                      {isPrepaid ? "⚡ Online UPI" : "💵 Cash on Delivery"}
+
+                  <div className="order-badges-group">
+                    <span className={`payment-tag ${isPrepaid ? "paid" : ""}`}>
+                      {isPrepaid ? "⚡ UPI PREPAID" : "💵 CASH ON DELIVERY"}
                     </span>
-                    <span
-                      style={{
-                        padding: "3px 8px",
-                        borderRadius: "20px",
-                        fontSize: "11px",
-                        fontWeight: 700,
-                        background: status === "delivered" ? "#dcfce7" : status === "dispatched" ? "#dbeafe" : status === "cancelled" ? "#fee2e2" : "#fdf6f2",
-                        color: status === "delivered" ? "#15803d" : status === "dispatched" ? "#1e40af" : status === "cancelled" ? "#b91c1c" : "var(--wine)"
-                      }}
-                    >
+                    <span className={`status-tag status-tag-${status}`}>
                       {status.toUpperCase()}
                     </span>
                   </div>
                 </div>
 
-                {/* Body Details */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px", fontSize: "13px" }}>
-                  <div>
-                    <span style={{ color: "var(--muted)", display: "block", fontSize: "11px" }}>CUSTOMER:</span>
-                    <strong>{order.customer_name}</strong>
-                    <div style={{ marginTop: "4px" }}>
+                <div className="order-card-body">
+                  {/* Customer Column */}
+                  <div className="order-customer-col">
+                    <span className="order-section-subtitle">Customer Details</span>
+                    <strong style={{ fontSize: "15px", color: "var(--ink)" }}>{order.customer_name}</strong>
+                    <div>
                       <a
                         href={`https://wa.me/91${order.customer_phone}?text=Hello%20${encodeURIComponent(order.customer_name)},%20this%20is%20SALORIYA%20Store%20regarding%20your%20order%20%23${order.order_id}.`}
                         target="_blank"
                         rel="noreferrer"
-                        style={{ color: "#15803d", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "4px" }}
+                        style={{
+                          color: "#15803d",
+                          fontWeight: 600,
+                          fontSize: "13px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                          textDecoration: "none"
+                        }}
                       >
                         📱 +91 {order.customer_phone} ↗
                       </a>
                     </div>
+                    <div style={{ fontSize: "12.5px", color: "var(--muted)", lineHeight: 1.4, marginTop: "4px" }}>
+                      📍 {order.delivery_address}
+                    </div>
                   </div>
 
-                  <div>
-                    <span style={{ color: "var(--muted)", display: "block", fontSize: "11px" }}>DELIVERY ADDRESS:</span>
-                    <span>{order.delivery_address}</span>
-                  </div>
+                  {/* Order Items Column */}
+                  <div className="order-items-col">
+                    <span className="order-section-subtitle">Ordered Pieces</span>
+                    <div style={{ background: "#fcf8f5", border: "1px solid var(--line-subtle)", borderRadius: "8px", padding: "10px 14px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                        <div>
+                          <strong style={{ fontSize: "14px", color: "var(--ink)" }}>{order.product_name}</strong>
+                          <div style={{ fontSize: "12px", color: "var(--muted)", marginTop: "2px" }}>
+                            Colour: <strong>{order.variant_colour || "Standard"}</strong> · Qty: <strong>{order.quantity || 1} pc</strong>
+                          </div>
+                        </div>
+                        <strong style={{ fontSize: "16px", color: "var(--wine)" }}>
+                          {formatMoney(order.total_paise)}
+                        </strong>
+                      </div>
 
-                  <div>
-                    <span style={{ color: "var(--muted)", display: "block", fontSize: "11px" }}>ITEM &amp; VARIANT:</span>
-                    <strong>{order.product_name}</strong>
-                    <span style={{ display: "block", color: "var(--muted)", fontSize: "12px" }}>Colour: {order.variant_colour} · Qty: {order.quantity}</span>
-                  </div>
-
-                  <div>
-                    <span style={{ color: "var(--muted)", display: "block", fontSize: "11px" }}>TOTAL AMOUNT:</span>
-                    <strong style={{ fontSize: "16px", color: "var(--wine)" }}>{formatMoney(order.total_paise)}</strong>
-                    {order.utr_number && (
-                      <span style={{ display: "block", fontSize: "11px", color: "#6b21a8" }}>UTR: {order.utr_number}</span>
-                    )}
+                      {order.utr_number && (
+                        <div style={{ fontSize: "11px", color: "#6b21a8", marginTop: "6px", fontWeight: 600 }}>
+                          UPI Ref / UTR: {order.utr_number}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                {/* Footer Actions */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "8px", marginTop: "14px", paddingTop: "10px", borderTop: "1px solid var(--line-subtle)" }}>
-                  <div style={{ display: "flex", gap: "6px" }}>
+                {/* Footer Actions Strip */}
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    gap: "10px",
+                    padding: "12px 20px",
+                    background: "#fbf7f4",
+                    borderTop: "1px solid var(--line)"
+                  }}
+                >
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                     {order.payment_screenshot && (
                       <button
                         type="button"
                         className="button"
-                        style={{ padding: "6px 12px", fontSize: "11px", background: "#fdf4ff", border: "1px solid #f0abfc", color: "#a21caf" }}
+                        style={{
+                          padding: "6px 12px",
+                          fontSize: "11px",
+                          background: "#fdf4ff",
+                          border: "1px solid #f0abfc",
+                          color: "#a21caf"
+                        }}
                         onClick={() => setSelectedScreenshot(order.payment_screenshot)}
                       >
-                        📸 View UPI Screenshot
+                        📸 View UPI Screenshot Proof
                       </button>
                     )}
                   </div>
 
-                  <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-                    <span style={{ fontSize: "11px", color: "var(--muted)" }}>Update Status:</span>
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                    <span style={{ fontSize: "11px", color: "var(--muted)", fontWeight: 600 }}>Status:</span>
                     <select
                       value={status}
                       onChange={(e) => handleStatusChange(order.order_id, e.target.value)}
-                      style={{ padding: "4px 8px", fontSize: "11.5px", borderRadius: "4px", border: "1px solid var(--line)" }}
+                      style={{
+                        padding: "5px 10px",
+                        fontSize: "11.5px",
+                        borderRadius: "6px",
+                        border: "1px solid var(--line)",
+                        background: "#fff",
+                        fontWeight: 600
+                      }}
                     >
+                      <option value="pending">Pending</option>
                       <option value="confirmed">Confirmed</option>
-                      <option value="dispatched">Dispatched</option>
+                      <option value="shipped">Shipped</option>
                       <option value="delivered">Delivered</option>
                       <option value="cancelled">Cancelled</option>
                     </select>
+
+                    <button
+                      type="button"
+                      className="button button-small"
+                      style={{ background: "#fee2e2", color: "#991b1b", border: "1px solid #fecaca", marginLeft: "8px" }}
+                      onClick={() => handleDeleteOrder(order.order_id)}
+                    >
+                      Delete
+                    </button>
                   </div>
                 </div>
               </div>
             );
-          })}
-        </div>
-      )}
+          })
+        )}
+      </div>
 
-      {/* Screenshot Modal */}
+      {/* Screenshot Modal Lightbox */}
       {selectedScreenshot && (
         <div className="product-modal" role="dialog" aria-modal="true">
           <div className="product-modal-backdrop" onClick={() => setSelectedScreenshot(null)}></div>
-          <div className="product-modal-dialog" style={{ maxWidth: "450px", padding: "16px" }}>
-            <button className="product-modal-close" onClick={() => setSelectedScreenshot(null)}>✕</button>
-            <h4 style={{ margin: "0 0 10px" }}>Customer Payment Screenshot</h4>
-            <div style={{ maxHeight: "70vh", overflow: "auto", textAlign: "center" }}>
-              <img src={selectedScreenshot} alt="Payment Proof" style={{ maxWidth: "100%", borderRadius: "6px" }} />
+          <div className="product-modal-dialog" style={{ maxWidth: "480px", padding: "20px" }}>
+            <button className="product-modal-close" onClick={() => setSelectedScreenshot(null)}>
+              ✕
+            </button>
+            <h4 style={{ margin: "0 0 12px", fontFamily: "'Playfair Display', serif", fontSize: "18px" }}>
+              Customer Payment Confirmation
+            </h4>
+            <div style={{ maxHeight: "75vh", overflow: "auto", textAlign: "center", borderRadius: "8px" }}>
+              <img src={selectedScreenshot} alt="Payment Proof" style={{ maxWidth: "100%", borderRadius: "8px" }} />
             </div>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { useStore } from "../../context/StoreContext";
+import { useStore, getColourImage } from "../../context/StoreContext";
 import { supabase, isSupabaseConfigured } from "../../supabase.js";
 
 export default function CheckoutModal() {
@@ -332,7 +332,16 @@ export default function CheckoutModal() {
               {/* Product Summary */}
               <div className="checkout-product-summary">
                 <div className="checkout-thumb">
-                  <img src={product.images?.[0] || "/logo.png"} alt={product.name} />
+                  {getColourImage(product, initialColour, 0) || product.image_urls?.[0] || product.images?.[0] ? (
+                    <img
+                      src={getColourImage(product, initialColour, 0) || product.image_urls?.[0] || product.images?.[0]}
+                      alt={product.name}
+                    />
+                  ) : (
+                    <div style={{ display: "grid", placeItems: "center", width: "100%", height: "100%", background: "#f5e6de", color: "var(--wine)", fontWeight: 700 }}>
+                      S
+                    </div>
+                  )}
                 </div>
                 <div className="checkout-product-details">
                   <span className="checkout-product-title">{product.name}</span>

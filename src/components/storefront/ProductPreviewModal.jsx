@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useStore } from "../../context/StoreContext";
 
 export default function ProductPreviewModal() {
   const { previewProductId, closePreview, products, formatMoney, openCheckout } = useStore();
   const [activePhotoIdx, setActivePhotoIdx] = useState(0);
   const [selectedColour, setSelectedColour] = useState("");
+  const mainImgRef = useRef(null);
 
   const product = products.find((p) => p.id === previewProductId);
 
@@ -31,66 +32,136 @@ export default function ProductPreviewModal() {
 
   if (!product) return null;
 
-  const images = Array.isArray(product.images) && product.images.length > 0
-    ? product.images
-    : ["/logo.png"];
+  const images = (Array.isArray(product.image_urls) && product.image_urls.length > 0)
+    ? product.image_urls.filter((u) => u && u !== "/logo.png")
+    : ((Array.isArray(product.images) && product.images.length > 0)
+      ? product.images.filter((u) => u && u !== "/logo.png")
+      : []);
 
-  const activeImage = images[activePhotoIdx] || images[0];
+  const activeImage = images[activePhotoIdx] || images[0] || "";
   const colours = Array.isArray(product.colours) ? product.colours : [];
   const isOutOfStock = (product.stock || 0) <= 0;
+  const categoryName = product.category || "GOLD COVERING";
 
-  const handleWhatsApp = () => {
-    const message = encodeURIComponent(
-      `Hello SALORIYA! I am viewing *${product.name}* (Colour: ${selectedColour}) priced at ${formatMoney(product.price_paise)} on your website and would love to order.`
-    );
-    window.open(`https://wa.me/918680824598?text=${message}`, "_blank", "noopener,noreferrer");
+  const handleMouseMove = (e) => {
+    if (!mainImgRef.current) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    mainImgRef.current.style.transformOrigin = `${x.toFixed(1)}% ${y.toFixed(1)}%`;
+    mainImgRef.current.style.transform = "scale(1.9)";
   };
 
-  const handleOrder = () => {
+  const handleMouseLeave = () => {
+    if (!mainImgRef.current) return;
+    mainImgRef.current.style.transform = "scale(1)";
+  };
+
+  const handleColourClick = (colour, index) => {
+    setSelectedColour(colour);
+    const clean = colour.trim().toLowerCase();
+    const matchedIdx = images.findIndex((url) => {
+      try {
+        return decodeURIComponent(url).toLowerCase().includes(clean);
+      } catch {
+        return false;
+      }
+    });
+    if (matchedIdx !== -1) {
+      setActivePhotoIdx(matchedIdx);
+    } else if (images[index]) {
+      setActivePhotoIdx(index);
+    }
+  };
+
+  const handleBuyNow = () => {
     closePreview();
     openCheckout(product, selectedColour);
   };
 
+  const handleWhatsApp = () => {
+    const colourText = selectedColour ? ` (Colour: ${selectedColour})` : "";
+    const message = encodeURIComponent(
+      `Hello SALORIYA! I am viewing *${product.name}*${colourText} priced at ${formatMoney(product.price_paise)} on your website and would love to order.`
+    );
+    window.open(`https://wa.me/918680824598?text=${message}`, "_blank", "noopener,noreferrer");
+  };
+
+  const handleQuery = () => {
+    const message = encodeURIComponent(
+      `Hello SALORIYA! I have a question about ${product.name}:\nCould you please help me with sizing/custom options?`
+    );
+    window.open(`https://wa.me/918680824598?text=${message}`, "_blank", "noopener,noreferrer");
+  };
+
   return (
-    <div className="product-modal" role="dialog" aria-modal="true">
+    <div id="product-modal" className="product-modal" role="dialog" aria-modal="true">
       <div className="product-modal-backdrop" onClick={closePreview}></div>
       <div className="product-modal-dialog">
         <button className="product-modal-close" onClick={closePreview} aria-label="Close product preview">
           ✕
         </button>
-        <div className="product-modal-content">
+
+        <div id="product-modal-content" className="product-modal-content">
           <div className="modal-grid">
-            {/* Gallery Column */}
+            {/* Left Column: Gallery & Interactive Zoom Lens */}
             <div className="modal-gallery">
-              <div className="modal-main-image-wrap">
-                <img src={activeImage} alt={product.name} className="modal-main-image" />
-                <span className="modal-zoom-hint">🔍 Premium High Finish</span>
+              <div
+                className="modal-main-image-wrap"
+                id="modal-image-wrap"
+                title="Hover to inspect fine details"
+                onMouseMove={handleMouseMove}
+                onMouseLeave={handleMouseLeave}
+              >
+                {activeImage ? (
+                  <img
+                    ref={mainImgRef}
+                    id="modal-main-img"
+                    className="modal-main-img"
+                    src={activeImage}
+                    alt={product.name}
+                  />
+                ) : (
+                  <div className="image-placeholder">
+                    <span>S</span>
+                    <small>READY TO WEAR</small>
+                  </div>
+                )}
+                <div className="modal-zoom-hint">
+                  <span>🔍 Hover to Zoom</span>
+                </div>
               </div>
+
               {images.length > 1 && (
-                <div className="modal-thumb-strip">
-                  {images.map((img, idx) => (
+                <div className="modal-thumbs" id="modal-thumbs">
+                  {images.map((url, i) => (
                     <button
-                      key={idx}
+                      key={i}
                       type="button"
-                      className={`modal-thumb-btn ${idx === activePhotoIdx ? "active" : ""}`}
-                      onClick={() => setActivePhotoIdx(idx)}
+                      className={`modal-thumb ${i === activePhotoIdx ? "active" : ""}`}
+                      onClick={() => setActivePhotoIdx(i)}
+                      aria-label={`View photo ${i + 1}`}
                     >
-                      <img src={img} alt={`Thumbnail ${idx + 1}`} />
+                      <img src={url} alt={`${product.name} - photo ${i + 1}`} />
                     </button>
                   ))}
                 </div>
               )}
             </div>
 
-            {/* Product Meta Column */}
+            {/* Right Column: Flipkart / Amazon Style Details */}
             <div className="modal-details">
-              <span className="modal-category-tag">{product.category || "GOLD COVERING & READYMADE"}</span>
+              <div className="modal-breadcrumb">
+                <span>SALORIYA</span> &rsaquo; <span>JEWELLERY</span> &rsaquo;{" "}
+                <span className="modal-category">{categoryName}</span>
+              </div>
+
               <h2 className="modal-title">{product.name}</h2>
 
               <div className="modal-rating-row">
-                <span className="modal-stars">★★★★★</span>
-                <span className="modal-rating-text">4.9 / 5.0 (Hand-checked quality)</span>
-                <span className="modal-verified-pill">✓ Boutique Ready</span>
+                <div className="modal-stars">★★★★★</div>
+                <span className="modal-rating-text">4.9 / 5 · Handcrafted Polish</span>
+                <span className="modal-verified-pill">✦ Boutique Quality</span>
               </div>
 
               <div className="modal-price-box">
@@ -99,26 +170,27 @@ export default function ProductPreviewModal() {
                   <span className="modal-tax-tag">Inclusive of all taxes</span>
                 </div>
                 {isOutOfStock ? (
-                  <span className="modal-stock-badge out-of-stock">Out of stock</span>
+                  <span className="modal-stock-badge out-of-stock">Currently Out of Stock</span>
                 ) : (
-                  <span className="modal-stock-badge in-stock">Ready to wear (Only {product.stock || 5} left)</span>
+                  <span className="modal-stock-badge in-stock">✓ Ready to Wear / In Stock</span>
                 )}
+                <div className="modal-tagline">
+                  ✨ Direct artisan craft · Tarnish-resistant coating · Instant dispatch
+                </div>
               </div>
 
-              {/* Colour options */}
               {colours.length > 0 && (
-                <div className="modal-colours-section">
-                  <span className="modal-colours-title">Available Colours &amp; Looks:</span>
-                  <div className="modal-colours-list">
+                <div className="modal-option-block">
+                  <label className="modal-option-label">
+                    Select Colour / Variant: <strong id="modal-chosen-colour">{selectedColour}</strong>
+                  </label>
+                  <div className="modal-colour-pills" id="modal-colour-pills">
                     {colours.map((c, i) => (
                       <button
                         key={c}
                         type="button"
                         className={`modal-colour-pill ${c === selectedColour ? "active" : ""}`}
-                        onClick={() => {
-                          setSelectedColour(c);
-                          if (images[i]) setActivePhotoIdx(i);
-                        }}
+                        onClick={() => handleColourClick(c, i)}
                       >
                         {c}
                       </button>
@@ -127,38 +199,83 @@ export default function ProductPreviewModal() {
                 </div>
               )}
 
-              {/* Description */}
-              {product.description && (
-                <div className="modal-desc-box">
-                  <p>{product.description}</p>
-                </div>
-              )}
+              {/* Product Highlights */}
+              <div className="modal-highlights">
+                <h4 className="modal-section-title">Product Highlights</h4>
+                <ul className="modal-spec-list">
+                  <li>
+                    <strong>Craft &amp; Style:</strong> Premium 1-Gram Gold Covering &amp; Readymade Jewellery
+                  </li>
+                  <li>
+                    <strong>Coating:</strong> Long-lasting micro-gold finish with protective tarnish barrier
+                  </li>
+                  <li>
+                    <strong>Skin Comfort:</strong> 100% Nickel-free, lead-free &amp; hypoallergenic daily wear
+                  </li>
+                  <li>
+                    <strong>Packaging:</strong> Safely secured in protective jewellery-grade box
+                  </li>
+                  <li>
+                    <strong>Occasion:</strong> Perfect for festive, wedding, temple &amp; everyday elegance
+                  </li>
+                </ul>
+              </div>
 
-              {/* Modal Actions */}
+              {/* Description */}
+              <div className="modal-description-section">
+                <h4 className="modal-section-title">About this piece</h4>
+                <p className="modal-description-text">
+                  {product.description ||
+                    "Designed with meticulous attention to detail, this SALORIYA piece captures the authentic grandeur of heirloom gold jewellery in a lightweight, ready-to-wear silhouette."}
+                </p>
+              </div>
+
+              {/* Order & Enquiries Actions */}
               <div className="modal-actions">
                 <button
                   type="button"
-                  className="button button-gold modal-buy-btn"
-                  onClick={handleOrder}
+                  className="modal-buy-direct-btn"
+                  id="modal-buy-button"
                   disabled={isOutOfStock}
+                  onClick={handleBuyNow}
                 >
-                  {isOutOfStock ? "Sold Out" : "Order Direct Now 🛍️"}
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path>
+                    <line x1="3" y1="6" x2="21" y2="6"></line>
+                    <path d="M16 10a4 4 0 0 1-8 0"></path>
+                  </svg>
+                  <span>{isOutOfStock ? "Unavailable" : "Order Now 🛍️"}</span>
                 </button>
+
                 <button
                   type="button"
-                  className="button modal-wa-btn"
-                  onClick={handleWhatsApp}
+                  className="modal-wa-btn"
+                  id="modal-order-button"
                   disabled={isOutOfStock}
+                  onClick={handleWhatsApp}
                 >
-                  Enquire on WhatsApp 💬
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                    <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91C2.13 13.66 2.59 15.36 3.45 16.86L2.05 22L7.3 20.62C8.75 21.41 10.38 21.83 12.04 21.83C17.5 21.83 21.95 17.38 21.95 11.92C21.95 9.27 20.92 6.78 19.05 4.91C17.18 3.03 14.69 2 12.04 2ZM12.05 20.16C10.57 20.16 9.12 19.76 7.85 19.01L7.55 18.83L4.43 19.65L5.26 16.61L5.06 16.29C4.24 14.99 3.8 13.47 3.8 11.91C3.8 7.37 7.5 3.67 12.05 3.67C14.25 3.67 16.31 4.53 17.87 6.09C19.42 7.65 20.28 9.72 20.28 11.92C20.28 16.46 16.58 20.16 12.05 20.16ZM16.57 14.33C16.32 14.2 15.1 13.6 14.87 13.52C14.64 13.43 14.48 13.39 14.31 13.64C14.15 13.88 13.68 14.44 13.53 14.6C13.39 14.77 13.25 14.79 13 14.66C12.75 14.54 11.95 14.28 11 13.43C10.26 12.77 9.76 11.95 9.61 11.7C9.47 11.45 9.6 11.32 9.72 11.2C9.83 11.09 9.97 10.91 10.1 10.76C10.22 10.61 10.26 10.5 10.34 10.34C10.42 10.17 10.38 10.03 10.32 9.91C10.26 9.78 9.76 8.56 9.56 8.06C9.36 7.58 9.16 7.64 9.01 7.63C8.87 7.62 8.71 7.62 8.54 7.62C8.38 7.62 8.11 7.68 7.89 7.93C7.66 8.17 7.03 8.76 7.03 9.97C7.03 11.18 7.91 12.35 8.03 12.51C8.16 12.68 9.77 15.16 12.24 16.22C12.82 16.47 13.28 16.63 13.64 16.74C14.23 16.93 14.76 16.9 15.19 16.84C15.67 16.77 16.66 16.24 16.87 15.66C17.07 15.07 17.07 14.57 17.01 14.47C16.95 14.37 16.81 14.45 16.57 14.33Z" />
+                  </svg>
+                  <span>WhatsApp ↗</span>
                 </button>
               </div>
 
+              <button type="button" className="modal-query-link" id="modal-query-btn" onClick={handleQuery}>
+                Need custom sizing or have questions? Chat with our stylist ↗
+              </button>
+
               {/* Trust Bar */}
               <div className="modal-trust-bar">
-                <div className="trust-item"><span>🚚</span> Fast Insured Dispatch</div>
-                <div className="trust-item"><span>✨</span> Non-Allergic 1g Covering</div>
-                <div className="trust-item"><span>🛡️</span> Tamper-Proof Boutique Box</div>
+                <div className="trust-item">
+                  <span>💎</span> Authentic Finish
+                </div>
+                <div className="trust-item">
+                  <span>📦</span> Direct Dispatch
+                </div>
+                <div className="trust-item">
+                  <span>🛡️</span> Verified Quality
+                </div>
               </div>
             </div>
           </div>

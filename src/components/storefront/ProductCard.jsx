@@ -1,43 +1,47 @@
 import React, { useState } from "react";
-import { useStore } from "../../context/StoreContext";
+import { useStore, getColourImage } from "../../context/StoreContext";
 
 export default function ProductCard({ product }) {
   const { formatMoney, openPreview, openCheckout } = useStore();
   const [selectedColourIndex, setSelectedColourIndex] = useState(0);
 
-  const images = Array.isArray(product.images) && product.images.length > 0
-    ? product.images
-    : ["/logo.png"];
-
-  // Select image based on chosen colour if multiple images exist
-  const activeImage = images[selectedColourIndex] || images[0];
   const colours = Array.isArray(product.colours) ? product.colours : [];
-  const selectedColour = colours[selectedColourIndex] || "Standard";
+  const selectedColour = colours[selectedColourIndex] || "";
+  const activeImage = getColourImage(product, selectedColour, selectedColourIndex);
 
   const isOutOfStock = (product.stock || 0) <= 0;
+  const hasMultipleColours = colours.length > 1;
 
   const handleWhatsApp = (e) => {
     e.stopPropagation();
+    const colourText = selectedColour ? ` (Colour: ${selectedColour})` : "";
     const message = encodeURIComponent(
-      `Hello SALORIYA! I would like to order *${product.name}* (Colour: ${selectedColour}) priced at ${formatMoney(product.price_paise)}.`
+      `Hello SALORIYA! I would like to order *${product.name}*${colourText} priced at ${formatMoney(product.price_paise)}.`
     );
     window.open(`https://wa.me/918680824598?text=${message}`, "_blank", "noopener,noreferrer");
   };
 
   const handleBuyNow = (e) => {
     e.stopPropagation();
-    openCheckout(product, selectedColour);
+    openCheckout(product, selectedColour || "Standard");
   };
 
   return (
-    <article className="product-card" data-product-id={product.id}>
+    <article className="product-card" data-product-id={product.id} data-selected-colour={selectedColour || "Standard"}>
       {/* Product Image Frame */}
       <div
         className="product-image"
         onClick={() => openPreview(product.id)}
         title="Click to view details & photos"
       >
-        <img src={activeImage} alt={product.name} loading="lazy" />
+        {activeImage ? (
+          <img src={activeImage} alt={product.name} loading="lazy" />
+        ) : (
+          <div className="image-placeholder">
+            <span>S</span>
+            <small>READY TO WEAR</small>
+          </div>
+        )}
         {isOutOfStock ? (
           <span className="stock-tag out-of-stock">Out of stock</span>
         ) : (
@@ -49,10 +53,10 @@ export default function ProductCard({ product }) {
       {/* Product Info */}
       <div className="product-info" onClick={() => openPreview(product.id)}>
         <div>
-          {colours.length > 1 ? (
-            <span className="variant-count-badge">✨ {colours.length} Colour Options</span>
+          {hasMultipleColours ? (
+            <span className="card-variant-badge multi-colour">✨ {colours.length} Colour Options</span>
           ) : (
-            <span className="variant-count-badge single">👑 Signature Single Look</span>
+            <span className="card-variant-badge single-look">👑 Signature Single Edition</span>
           )}
           <p className="product-category">{product.category || "GOLD COVERING"}</p>
           <h3 className="product-title-link">{product.name}</h3>
@@ -66,8 +70,8 @@ export default function ProductCard({ product }) {
         </p>
       )}
 
-      {/* Swatches */}
-      {colours.length > 1 && (
+      {/* Colour Swatches */}
+      {hasMultipleColours && (
         <div className="card-colour-swatches">
           <span style={{ fontSize: "10px", color: "var(--muted)", fontWeight: 600 }}>Colours:</span>
           {colours.map((c, i) => (
@@ -87,7 +91,7 @@ export default function ProductCard({ product }) {
         </div>
       )}
 
-      {/* Stacked Mobile-Responsive Action Row */}
+      {/* Action Row */}
       <div className="card-action-row">
         <button
           type="button"

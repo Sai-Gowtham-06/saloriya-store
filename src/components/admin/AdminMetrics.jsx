@@ -18,25 +18,34 @@ export default function AdminMetrics({ orders }) {
   };
 
   return (
-    <div className="orders-metrics-bar">
+    <div className="metrics-grid">
       <div className="metric-card">
-        <span className="metric-label">Total Orders Placed</span>
+        <span className="metric-label">Total Orders</span>
         <strong className="metric-value">{totalOrders}</strong>
-        <span className="metric-sub">Lifetime customer orders</span>
+        <span className="metric-sub">All-time placed orders</span>
       </div>
-      <div className="metric-card">
-        <span className="metric-label">Pending Orders</span>
-        <strong className="metric-value" style={{ color: "#d97706" }}>{pendingOrders}</strong>
-        <span className="metric-sub">Awaiting confirmation</span>
+      <div className="metric-card metric-card-highlight">
+        <div className="metric-header-row">
+          <span className="metric-label">Pending Confirmation</span>
+          {pendingOrders > 0 && <span className="pulse-dot"></span>}
+        </div>
+        <strong className="metric-value" style={{ color: "#d97706" }}>
+          {pendingOrders}
+        </strong>
+        <span className="metric-sub">Awaiting stock deduction</span>
       </div>
       <div className="metric-card">
         <span className="metric-label">Confirmed / In-Transit</span>
-        <strong className="metric-value" style={{ color: "#15803d" }}>{confirmedOrders}</strong>
-        <span className="metric-sub">Stock deducted &amp; processing</span>
+        <strong className="metric-value" style={{ color: "#15803d" }}>
+          {confirmedOrders}
+        </strong>
+        <span className="metric-sub">Stock already deducted</span>
       </div>
       <div className="metric-card">
         <span className="metric-label">Total Revenue</span>
-        <strong className="metric-value" style={{ color: "var(--wine)" }}>{formatRevenue(totalRevenuePaise)}</strong>
+        <strong className="metric-value" style={{ color: "var(--wine)" }}>
+          {formatRevenue(totalRevenuePaise)}
+        </strong>
         <span className="metric-sub">Confirmed &amp; completed sales</span>
       </div>
     </div>

@@ -3,9 +3,10 @@ import AdminHeader from "../components/admin/AdminHeader";
 import AdminAuthGate from "../components/admin/AdminAuthGate";
 import AdminMetrics from "../components/admin/AdminMetrics";
 import AdminOrders from "../components/admin/AdminOrders";
-import AdminProductForm from "../components/admin/AdminProductForm";
-import AdminInventoryList from "../components/admin/AdminInventoryList";
+import AdminProductStudio from "../components/admin/AdminProductStudio";
+import AdminStockMonitor from "../components/admin/AdminStockMonitor";
 import AdminPromoManager from "../components/admin/AdminPromoManager";
+import AdminRecordOrderModal from "../components/admin/AdminRecordOrderModal";
 import { useStore } from "../context/StoreContext";
 import { supabase, isSupabaseConfigured } from "../supabase.js";
 
@@ -15,8 +16,11 @@ export default function AdminPage() {
     return sessionStorage.getItem("saloriya_admin_auth") === "true";
   });
 
+  const [activeTab, setActiveTab] = useState("orders"); // 'orders' | 'products' | 'inventory' | 'promos'
   const [orders, setOrders] = useState([]);
   const [editingProduct, setEditingProduct] = useState(null);
+  const [showRecordModal, setShowRecordModal] = useState(false);
+  const [promosCount, setPromosCount] = useState(3);
 
   const loadOrders = async () => {
     let list = [];
@@ -63,48 +67,135 @@ export default function AdminPage() {
 
   if (!isAuthenticated) {
     return (
-      <>
-        <AdminHeader isAuthenticated={false} />
-        <AdminAuthGate onLoginSuccess={handleLoginSuccess} />
-      </>
+      <div className="admin-body">
+        <AdminHeader />
+        <main className="admin-wrap">
+          <AdminAuthGate onLoginSuccess={handleLoginSuccess} />
+        </main>
+      </div>
     );
   }
 
+  const pendingOrdersCount = orders.filter((o) => o.status === "pending").length;
+
   return (
-    <>
-      <AdminHeader isAuthenticated={true} onLogout={handleLogout} />
-      <div className="admin-wrap">
-        <div className="admin-title">
-          <div>
-            <span className="eyebrow">SALORIYA MANAGEMENT SYSTEM</span>
-            <h1>Operations Console</h1>
+    <div className="admin-body">
+      <AdminHeader />
+      <main className="admin-wrap">
+        <section id="dashboard">
+          {/* Admin Title Strip */}
+          <div className="admin-title">
+            <div>
+              <p className="eyebrow">SALORIYA MANAGEMENT CONSOLE</p>
+              <h1>
+                Store <em>Studio &amp; Orders.</em>
+              </h1>
+            </div>
+            <div className="admin-header-actions">
+              <button
+                id="open-record-order-btn"
+                className="button button-gold"
+                type="button"
+                onClick={() => setShowRecordModal(true)}
+              >
+                + Record Order
+              </button>
+              <button id="signout" className="button button-outline" type="button" onClick={handleLogout}>
+                Sign out
+              </button>
+            </div>
           </div>
-        </div>
 
-        <AdminMetrics orders={orders} />
-        <AdminOrders orders={orders} onOrderUpdated={loadOrders} />
+          {/* Segmented Luxury Navigation Tabs */}
+          <nav className="admin-tabs-nav" aria-label="Admin Sections">
+            <button
+              type="button"
+              className={`admin-tab ${activeTab === "orders" ? "active" : ""}`}
+              onClick={() => setActiveTab("orders")}
+            >
+              <span className="tab-icon">📦</span>
+              <span>Orders Dashboard</span>
+              {pendingOrdersCount > 0 && <span className="tab-badge">{pendingOrdersCount}</span>}
+            </button>
+            <button
+              type="button"
+              className={`admin-tab ${activeTab === "products" ? "active" : ""}`}
+              onClick={() => setActiveTab("products")}
+            >
+              <span className="tab-icon">✨</span>
+              <span>Product Studio</span>
+            </button>
+            <button
+              type="button"
+              className={`admin-tab ${activeTab === "inventory" ? "active" : ""}`}
+              onClick={() => setActiveTab("inventory")}
+            >
+              <span className="tab-icon">📋</span>
+              <span>Live Stock Monitor</span>
+            </button>
+            <button
+              type="button"
+              className={`admin-tab ${activeTab === "promos" ? "active" : ""}`}
+              onClick={() => setActiveTab("promos")}
+            >
+              <span className="tab-icon">🏷️</span>
+              <span>Promo Codes</span>
+              {promosCount > 0 && <span className="tab-badge">{promosCount}</span>}
+            </button>
+          </nav>
 
-        <div className="admin-columns">
-          <AdminProductForm
-            editingProduct={editingProduct}
-            onSaved={() => {
-              setEditingProduct(null);
-              fetchProducts();
-            }}
-            onCancel={() => setEditingProduct(null)}
-          />
-          <AdminInventoryList
-            products={products}
-            onEdit={(prod) => {
-              setEditingProduct(prod);
-              window.scrollTo({ top: 600, behavior: "smooth" });
-            }}
-            onProductChanged={fetchProducts}
-          />
-        </div>
+          {/* TAB 1: ORDERS DASHBOARD */}
+          {activeTab === "orders" && (
+            <>
+              <AdminMetrics orders={orders} />
+              <AdminOrders
+                orders={orders}
+                onOrderUpdated={loadOrders}
+                onOpenRecordOrder={() => setShowRecordModal(true)}
+              />
+            </>
+          )}
 
-        <AdminPromoManager />
-      </div>
-    </>
+          {/* TAB 2: PRODUCT STUDIO */}
+          {activeTab === "products" && (
+            <AdminProductStudio
+              products={products}
+              onProductChanged={fetchProducts}
+              editingProduct={editingProduct}
+              setEditingProduct={setEditingProduct}
+            />
+          )}
+
+          {/* TAB 3: LIVE STOCK MONITOR */}
+          {activeTab === "inventory" && (
+            <AdminStockMonitor
+              products={products}
+              onProductChanged={fetchProducts}
+              onEditInStudio={(prod) => {
+                setEditingProduct(prod);
+                setActiveTab("products");
+                window.scrollTo({ top: 150, behavior: "smooth" });
+              }}
+            />
+          )}
+
+          {/* TAB 4: PROMO CODES */}
+          {activeTab === "promos" && (
+            <AdminPromoManager onPromosUpdated={(count) => setPromosCount(count)} />
+          )}
+        </section>
+      </main>
+
+      {/* Record Order Modal */}
+      <AdminRecordOrderModal
+        isOpen={showRecordModal}
+        onClose={() => setShowRecordModal(false)}
+        products={products}
+        onOrderCreated={() => {
+          loadOrders();
+          fetchProducts();
+        }}
+      />
+    </div>
   );
 }

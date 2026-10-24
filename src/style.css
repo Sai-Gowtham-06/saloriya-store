@@ -2062,10 +2062,10 @@ body.modal-open {
   border-radius: 6px !important;
 }
 
-/* Segmented Luxury Navigation Tabs - Evenly Arranged 3-Column Grid */
+/* Segmented Luxury Navigation Tabs - Evenly Arranged 4-Column Grid */
 .admin-tabs-nav {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 12px;
   background: #ffffff;
   border: 1px solid var(--line);
@@ -2109,7 +2109,14 @@ body.modal-open {
   box-shadow: 0 4px 16px rgba(134, 30, 56, 0.26);
 }
 
-@media (max-width: 768px) {
+@media (max-width: 992px) {
+  .admin-tabs-nav {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+}
+
+@media (max-width: 600px) {
   .admin-tabs-nav {
     grid-template-columns: 1fr;
     gap: 8px;

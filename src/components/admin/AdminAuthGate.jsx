@@ -2,26 +2,41 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 
 export default function AdminAuthGate({ onLoginSuccess }) {
+  const [userId, setUserId] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Accepted management usernames and passwords
+  const VALID_USERS = ["admin", "saloriya", "saloriya_admin", "saloriyaofficial@gmail.com"];
+  const VALID_PASSWORDS = ["saloriya2026", "admin123"];
+
   const handleSubmit = (e) => {
     e.preventDefault();
     setError("");
 
-    if (!password.trim()) {
-      setError("Please enter your admin security password.");
+    const cleanUser = userId.trim().toLowerCase();
+    const cleanPass = password.trim();
+
+    if (!cleanUser) {
+      setError("Please enter your User ID or admin email.");
+      return;
+    }
+
+    if (!cleanPass) {
+      setError("Please enter your admin password.");
       return;
     }
 
     setIsSubmitting(true);
     setTimeout(() => {
-      if (password === "saloriya2026" || password === "admin123") {
+      if (VALID_USERS.includes(cleanUser) && VALID_PASSWORDS.includes(cleanPass)) {
+        sessionStorage.setItem("saloriya_admin_auth", "true");
+        sessionStorage.setItem("saloriya_admin_user", cleanUser);
         onLoginSuccess();
       } else {
-        setError("Incorrect management password. Please try again.");
+        setError("Invalid User ID or password. Please verify your credentials.");
         setIsSubmitting(false);
       }
     }, 200);
@@ -51,7 +66,7 @@ export default function AdminAuthGate({ onLoginSuccess }) {
           boxSizing: "border-box"
         }}
       >
-        {/* Emblem Badge with subtle luxury ring */}
+        {/* Emblem Badge with luxury gold ring */}
         <div
           style={{
             width: "82px",
@@ -88,7 +103,7 @@ export default function AdminAuthGate({ onLoginSuccess }) {
             marginBottom: "10px"
           }}
         >
-          ADMIN ACCESS
+          SECURE ADMIN PORTAL
         </span>
 
         <h2
@@ -100,29 +115,99 @@ export default function AdminAuthGate({ onLoginSuccess }) {
             margin: "0 0 6px"
           }}
         >
-          SALORIYA Admin Portal
+          SALORIYA Admin Login
         </h2>
         <p
           style={{
             fontSize: "13px",
             color: "var(--muted)",
-            margin: "0 0 28px",
+            margin: "0 0 26px",
             lineHeight: "1.55"
           }}
         >
-          Enter your boutique management password to access orders, live inventory, and promo codes.
+          Enter your User ID and management password to access orders, stock monitoring, and promo codes.
         </p>
 
         <form onSubmit={handleSubmit} noValidate>
+          {/* User ID Field */}
+          <div style={{ textAlign: "left", marginBottom: "16px" }}>
+            <label
+              htmlFor="admin-userid-input"
+              style={{
+                display: "block",
+                fontSize: "11.5px",
+                fontWeight: 700,
+                color: "var(--ink)",
+                marginBottom: "6px",
+                textTransform: "uppercase",
+                letterSpacing: "0.5px"
+              }}
+            >
+              User ID / Admin Username
+            </label>
+
+            <div
+              style={{
+                position: "relative",
+                display: "flex",
+                alignItems: "center",
+                width: "100%"
+              }}
+            >
+              <span
+                style={{
+                  position: "absolute",
+                  left: "14px",
+                  color: "#cf9c4e",
+                  fontSize: "14px",
+                  pointerEvents: "none",
+                  display: "grid",
+                  placeItems: "center"
+                }}
+              >
+                👤
+              </span>
+
+              <input
+                id="admin-userid-input"
+                type="text"
+                autoFocus
+                autoComplete="username"
+                placeholder="e.g. admin or saloriya"
+                value={userId}
+                onChange={(e) => {
+                  setUserId(e.target.value);
+                  setError("");
+                }}
+                className="admin-login-input"
+                style={{
+                  width: "100%",
+                  height: "46px",
+                  padding: "0 16px 0 40px",
+                  fontSize: "14px",
+                  color: "var(--ink)",
+                  background: "#faf6f4",
+                  border: error ? "1.5px solid #dc2626" : "1.5px solid #e5d7ce",
+                  borderRadius: "10px",
+                  outline: "none",
+                  boxSizing: "border-box",
+                  fontFamily: "inherit",
+                  transition: "border-color 0.2s, box-shadow 0.2s, background 0.2s"
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Password Field */}
           <div style={{ textAlign: "left", marginBottom: "18px" }}>
             <label
               htmlFor="admin-password-input"
               style={{
                 display: "block",
-                fontSize: "12px",
+                fontSize: "11.5px",
                 fontWeight: 700,
                 color: "var(--ink)",
-                marginBottom: "8px",
+                marginBottom: "6px",
                 textTransform: "uppercase",
                 letterSpacing: "0.5px"
               }}
@@ -138,13 +223,12 @@ export default function AdminAuthGate({ onLoginSuccess }) {
                 width: "100%"
               }}
             >
-              {/* Left Lock Icon */}
               <span
                 style={{
                   position: "absolute",
                   left: "14px",
                   color: "#cf9c4e",
-                  fontSize: "15px",
+                  fontSize: "14px",
                   pointerEvents: "none",
                   display: "grid",
                   placeItems: "center"
@@ -156,8 +240,8 @@ export default function AdminAuthGate({ onLoginSuccess }) {
               <input
                 id="admin-password-input"
                 type={showPassword ? "text" : "password"}
-                autoFocus
-                placeholder="Enter management password…"
+                autoComplete="current-password"
+                placeholder="Enter password…"
                 value={password}
                 onChange={(e) => {
                   setPassword(e.target.value);
@@ -180,7 +264,7 @@ export default function AdminAuthGate({ onLoginSuccess }) {
                 }}
               />
 
-              {/* Show/Hide Password Eye Button */}
+              {/* Show/Hide Password Eye Toggle */}
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
@@ -247,11 +331,11 @@ export default function AdminAuthGate({ onLoginSuccess }) {
               cursor: isSubmitting ? "not-allowed" : "pointer"
             }}
           >
-            {isSubmitting ? "Unlocking Portal…" : "Unlock Management Console ↗"}
+            {isSubmitting ? "Signing In…" : "Sign In to Admin Console ↗"}
           </button>
         </form>
 
-        <div style={{ marginTop: "24px", paddingTop: "18px", borderTop: "1px solid var(--line-subtle)" }}>
+        <div style={{ marginTop: "22px", paddingTop: "16px", borderTop: "1px solid var(--line-subtle)" }}>
           <Link
             to="/"
             style={{

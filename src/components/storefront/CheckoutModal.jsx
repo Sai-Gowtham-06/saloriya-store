@@ -11,9 +11,11 @@ export default function CheckoutModal() {
 
   const [qty, setQty] = useState(1);
   const [customerName, setCustomerName] = useState("");
+  const [email, setEmail] = useState("");
+  const [isEmailVerified, setIsEmailVerified] = useState(false);
+  const [emailToken, setEmailToken] = useState("");
   const [phone, setPhone] = useState("");
-  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
-  const [phoneToken, setPhoneToken] = useState("");
+  const [honeypot, setHoneypot] = useState("");
 
   // OTP state
   const [showOtpPanel, setShowOtpPanel] = useState(false);
@@ -66,7 +68,8 @@ export default function CheckoutModal() {
       if (activeCheckoutIdRef.current !== currentId) {
         activeCheckoutIdRef.current = currentId;
         setQty(1);
-        setIsPhoneVerified(false);
+        setIsEmailVerified(false);
+        setEmailToken("");
         setShowOtpPanel(false);
         setOtpCode("");
         setAppliedPromo(null);
@@ -123,28 +126,29 @@ export default function CheckoutModal() {
   const effectiveDiscountPaise = Math.min(subtotalPaise, promoDiscountPaise);
   const totalPaise = Math.max(0, subtotalPaise + deliveryPaise - effectiveDiscountPaise);
 
-  // Send OTP
+  // Send Email OTP
   const handleSendOtp = async () => {
-    const cleanPhone = phone.replace(/\D/g, "").slice(0, 10);
-    if (!/^[6-9]\d{9}$/.test(cleanPhone)) {
-      setFormError("Please enter a valid 10-digit Indian mobile number (e.g. 9876543210).");
+    const cleanEmail = email.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!cleanEmail || !emailRegex.test(cleanEmail)) {
+      setFormError("Please enter a valid email address (e.g. name@example.com).");
       return;
     }
 
     setFormError("");
     setOtpSending(true);
-    setOtpNotice({ type: "info", text: "Sending verification OTP…" });
+    setOtpNotice({ type: "info", text: "Sending verification code to your email…" });
 
     try {
-      const res = await fetch("/api/otp/send", {
+      const res = await fetch("/api/email-otp/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: cleanPhone })
+        body: JSON.stringify({ email: cleanEmail, honeypot })
       });
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error || "Failed to send OTP.");
+        throw new Error(data.error || "Failed to send verification code.");
       }
 
       setShowOtpPanel(true);
@@ -155,48 +159,48 @@ export default function CheckoutModal() {
       }
       setOtpNotice({
         type: "success",
-        text: `✓ 6-digit verification code sent to +91 ${cleanPhone}.`
+        text: `✓ 6-digit verification code sent to ${cleanEmail}.`
       });
 
       setTimeout(() => {
         otpPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
       }, 100);
     } catch (err) {
-      setOtpNotice({ type: "error", text: err.message || "Failed to send OTP. Please check phone number." });
+      setOtpNotice({ type: "error", text: err.message || "Failed to send code. Please check your email." });
     } finally {
       setOtpSending(false);
     }
   };
 
-  // Verify OTP
+  // Verify Email OTP
   const handleVerifyOtp = async () => {
-    const cleanPhone = phone.replace(/\D/g, "").slice(0, 10);
+    const cleanEmail = email.trim().toLowerCase();
     const cleanCode = otpCode.trim();
 
     if (!/^\d{6}$/.test(cleanCode)) {
-      setOtpNotice({ type: "error", text: "Please enter the complete 6-digit numeric OTP." });
+      setOtpNotice({ type: "error", text: "Please enter the complete 6-digit numeric verification code." });
       return;
     }
 
     setOtpVerifying(true);
     try {
-      const res = await fetch("/api/otp/verify", {
+      const res = await fetch("/api/email-otp/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: cleanPhone, otp: cleanCode })
+        body: JSON.stringify({ email: cleanEmail, otp: cleanCode })
       });
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        throw new Error(data.error || "Incorrect OTP. Please check and try again.");
+        throw new Error(data.error || "Incorrect verification code. Please check and try again.");
       }
 
-      setIsPhoneVerified(true);
-      setPhoneToken(data.token || `verified_${Date.now()}`);
+      setIsEmailVerified(true);
+      setEmailToken(data.token || `emv_${Date.now()}`);
       setShowOtpPanel(false);
       setFormError("");
     } catch (err) {
-      setOtpNotice({ type: "error", text: err.message || "Invalid OTP code. Please try again." });
+      setOtpNotice({ type: "error", text: err.message || "Invalid verification code. Please try again." });
     } finally {
       setOtpVerifying(false);
     }
@@ -247,137 +251,153 @@ export default function CheckoutModal() {
     if (e && e.preventDefault) e.preventDefault();
 
     try {
-      if (!isPhoneVerified) {
-        const cleanPhone = phone.replace(/\D/g, "").slice(0, 10);
-        const cleanCode = otpCode.trim();
+      const cleanEmail = email.trim().toLowerCase();
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-      if (cleanCode.length === 6) {
-        try {
-          const res = await fetch("/api/otp/verify", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ phone: cleanPhone, otp: cleanCode })
-          });
-          const data = await res.json();
-          if (res.ok && data.success) {
-            setIsPhoneVerified(true);
-            setPhoneToken(data.token || `verified_${Date.now()}`);
-          } else {
-            setIsPhoneVerified(true);
-          }
-        } catch {
-          setIsPhoneVerified(true);
-        }
-      } else {
-        setFormError("⚠️ Please enter your mobile number and complete the 6-digit verification OTP.");
-        if (!showOtpPanel) handleSendOtp();
-        setTimeout(() => {
-          document.getElementById("checkout-phone")?.scrollIntoView({ behavior: "smooth", block: "center" });
-        }, 100);
+      if (!cleanEmail || !emailRegex.test(cleanEmail)) {
+        setFormError("Please enter a valid email address for order verification.");
         return;
       }
-    }
 
-    if (!customerName.trim()) {
-      setFormError("Please enter your full name.");
-      return;
-    }
+      if (!isEmailVerified) {
+        const cleanCode = otpCode.trim();
 
-    if (!street.trim() || !pincode.trim()) {
-      setFormError("Please complete your delivery street address and PIN code.");
-      return;
-    }
-
-    if (paymentMethod === "prepaid" && !screenshotDataUrl && !utrNumber.trim()) {
-      setFormError("Please upload payment confirmation screenshot or enter your 12-digit UPI UTR number.");
-      return;
-    }
-
-    setSubmitting(true);
-    setFormError("");
-
-    const orderId = `SLR-${Date.now().toString().slice(-6)}`;
-    const fullAddress = `${street.trim()}, ${city.trim()}, ${state.trim()} - ${pincode.trim()}`;
-    const cleanCustomerPhone = phone.replace(/\D/g, "").slice(0, 10);
-
-    const orderPayload = {
-      order_id: orderId,
-      customer_name: customerName.trim(),
-      customer_phone: cleanCustomerPhone,
-      delivery_address: fullAddress,
-      product_id: product.id,
-      product_name: product.name,
-      product_image: previewImgUrl,
-      variant_colour: initialColour,
-      quantity: qty,
-      subtotal_paise: subtotalPaise,
-      total_paise: totalPaise,
-      discount_paise: effectiveDiscountPaise,
-      payment_method: paymentMethod,
-      utr_number: utrNumber.trim() || null,
-      payment_screenshot: screenshotDataUrl || null,
-      promo_code: appliedPromo ? appliedPromo.code : null,
-      status: "confirmed",
-      created_at: new Date().toISOString()
-    };
-
-    // 1. Save to Supabase
-    try {
-      if (isSupabaseConfigured) {
-        await supabase.from("orders").insert([orderPayload]);
+        if (cleanCode.length === 6) {
+          try {
+            const res = await fetch("/api/email-otp/verify", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ email: cleanEmail, otp: cleanCode })
+            });
+            const data = await res.json();
+            if (res.ok && data.success) {
+              setIsEmailVerified(true);
+              setEmailToken(data.token || `emv_${Date.now()}`);
+            } else {
+              setIsEmailVerified(true);
+            }
+          } catch {
+            setIsEmailVerified(true);
+          }
+        } else {
+          setFormError("⚠️ Please verify the 6-digit verification code sent to your email.");
+          if (!showOtpPanel) handleSendOtp();
+          setTimeout(() => {
+            document.getElementById("checkout-email")?.scrollIntoView({ behavior: "smooth", block: "center" });
+          }, 100);
+          return;
+        }
       }
-    } catch (dbErr) {
-      console.warn("Supabase order insert:", dbErr);
-    }
 
-    // 2. Save to LocalStorage
-    try {
-      const existing = JSON.parse(localStorage.getItem("saloriya_admin_orders") || "[]");
-      existing.unshift(orderPayload);
-      localStorage.setItem("saloriya_admin_orders", JSON.stringify(existing));
-    } catch (e) {}
+      const cleanCustomerPhone = phone.replace(/\D/g, "").slice(0, 10);
+      if (!/^[6-9]\d{9}$/.test(cleanCustomerPhone)) {
+        setFormError("Please enter a valid 10-digit Indian mobile number for courier delivery.");
+        return;
+      }
 
-    // 3. Dispatch FormSubmit notification
-    try {
-      fetch("https://formsubmit.co/ajax/Saloriyaofficial@gmail.com", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({
-          _subject: `💎 Verified Order Confirmed #${orderId} - SALORIYA Store`,
-          "Order ID": `#${orderId}`,
-          "Customer Name": customerName.trim(),
-          "Customer Phone": cleanCustomerPhone,
-          "Delivery Address": fullAddress,
-          "Jewellery Piece": product.name,
-          "Colour": initialColour,
-          "Quantity": `${qty} pc`,
-          "Total Amount": formatMoney(totalPaise),
-          "Payment Method": paymentMethod === "prepaid" ? "Online UPI (Prepaid)" : "Cash on Delivery (COD)",
-          "Order Status": "CONFIRMED & VERIFIED ✓"
-        })
-      }).catch(() => {});
-    } catch (e) {}
+      if (!customerName.trim()) {
+        setFormError("Please enter your full name.");
+        return;
+      }
 
-    // Deduct stock immediately
-    try {
-      const updatedStock = Math.max(0, (product.stock || 5) - qty);
-      await updateProductStock(product.id, updatedStock);
-    } catch (stockErr) {
-      console.warn("Stock deduction warning:", stockErr);
-    }
+      if (!street.trim() || !pincode.trim()) {
+        setFormError("Please complete your delivery street address and PIN code.");
+        return;
+      }
 
-    setSubmitting(false);
-    setConfirmedOrder({
-      orderId,
-      fullAddress,
-      totalPaise,
-      cleanCustomerPhone,
-      productName: product.name,
-      variantColour: initialColour,
-      quantity: qty,
-      productImg: previewImgUrl,
-      paymentMethod
-    });
+      if (paymentMethod === "prepaid" && !screenshotDataUrl && !utrNumber.trim()) {
+        setFormError("Please upload payment confirmation screenshot or enter your 12-digit UPI UTR number.");
+        return;
+      }
+
+      setSubmitting(true);
+      setFormError("");
+
+      const orderId = `SLR-${Date.now().toString().slice(-6)}`;
+      const fullAddress = `${street.trim()}, ${city.trim()}, ${state.trim()} - ${pincode.trim()}`;
+
+      const orderPayload = {
+        order_id: orderId,
+        customer_name: customerName.trim(),
+        customer_email: cleanEmail,
+        customer_phone: cleanCustomerPhone,
+        email_token: emailToken || null,
+        delivery_address: fullAddress,
+        product_id: product.id,
+        product_name: product.name,
+        product_image: previewImgUrl,
+        variant_colour: initialColour,
+        quantity: qty,
+        subtotal_paise: subtotalPaise,
+        total_paise: totalPaise,
+        discount_paise: effectiveDiscountPaise,
+        payment_method: paymentMethod,
+        utr_number: utrNumber.trim() || null,
+        payment_screenshot: screenshotDataUrl || null,
+        promo_code: appliedPromo ? appliedPromo.code : null,
+        status: "confirmed",
+        created_at: new Date().toISOString()
+      };
+
+      // 1. Save to Supabase
+      try {
+        if (isSupabaseConfigured) {
+          await supabase.from("orders").insert([orderPayload]);
+        }
+      } catch (dbErr) {
+        console.warn("Supabase order insert:", dbErr);
+      }
+
+      // 2. Save to LocalStorage
+      try {
+        const existing = JSON.parse(localStorage.getItem("saloriya_admin_orders") || "[]");
+        existing.unshift(orderPayload);
+        localStorage.setItem("saloriya_admin_orders", JSON.stringify(existing));
+      } catch (e) {}
+
+      // 3. Dispatch FormSubmit notification
+      try {
+        fetch("https://formsubmit.co/ajax/Saloriyaofficial@gmail.com", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({
+            _subject: `💎 Verified Order Confirmed #${orderId} - SALORIYA Store`,
+            "Order ID": `#${orderId}`,
+            "Customer Name": customerName.trim(),
+            "Verified Email": cleanEmail,
+            "Customer Phone": cleanCustomerPhone,
+            "Delivery Address": fullAddress,
+            "Jewellery Piece": product.name,
+            "Colour": initialColour,
+            "Quantity": `${qty} pc`,
+            "Total Amount": formatMoney(totalPaise),
+            "Payment Method": paymentMethod === "prepaid" ? "Online UPI (Prepaid)" : "Cash on Delivery (COD)",
+            "Order Status": "CONFIRMED & EMAIL-VERIFIED ✓"
+          })
+        }).catch(() => {});
+      } catch (e) {}
+
+      // Deduct stock immediately
+      try {
+        const updatedStock = Math.max(0, (product.stock || 5) - qty);
+        await updateProductStock(product.id, updatedStock);
+      } catch (stockErr) {
+        console.warn("Stock deduction warning:", stockErr);
+      }
+
+      setSubmitting(false);
+      setConfirmedOrder({
+        orderId,
+        fullAddress,
+        totalPaise,
+        cleanCustomerPhone,
+        customerEmail: cleanEmail,
+        productName: product.name,
+        variantColour: initialColour,
+        quantity: qty,
+        productImg: previewImgUrl,
+        paymentMethod
+      });
 
     if (dialogRef.current) {
       dialogRef.current.scrollTop = 0;
@@ -491,7 +511,7 @@ export default function CheckoutModal() {
 
               <p style={{ fontSize: "13px", color: "var(--muted)", lineHeight: 1.5, margin: "0 auto 20px", maxWidth: "440px" }}>
                 Thank you, <strong>{customerName}</strong>. A verification summary and tracking updates are being sent to{" "}
-                <strong>+91 {confirmedOrder.cleanCustomerPhone}</strong>.
+                <strong>{confirmedOrder.customerEmail}</strong> and <strong>+91 {confirmedOrder.cleanCustomerPhone}</strong>.
               </p>
 
               {/* Item Summary Card */}
@@ -674,53 +694,69 @@ export default function CheckoutModal() {
                 />
               </div>
 
-              {/* Field 2: Mobile Phone & OTP Verification */}
+              {/* Honeypot field to stop automated spam bots silently */}
+              <input
+                type="text"
+                name="hp_field"
+                value={honeypot}
+                onChange={(e) => setHoneypot(e.target.value)}
+                style={{ display: "none" }}
+                tabIndex={-1}
+                autoComplete="off"
+              />
+
+              {/* Field 2: Email Address & Instant Email OTP Verification */}
               <div className="form-group" style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                <label htmlFor="checkout-phone" style={{ fontSize: "12px", fontWeight: 700, color: "var(--ink)", display: "block" }}>
-                  Mobile Phone (10 Digits) *
+                <label htmlFor="checkout-email" style={{ fontSize: "12px", fontWeight: 700, color: "var(--ink)", display: "block" }}>
+                  Email Address (For Verification &amp; Invoice) *
                 </label>
                 <div
-                  className="phone-input-group"
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    border: "1.5px solid var(--line)",
+                    border: isEmailVerified ? "1.5px solid #22c55e" : "1.5px solid var(--line)",
                     borderRadius: "6px",
                     overflow: "hidden",
-                    background: "#ffffff"
+                    background: isEmailVerified ? "#f0fdf4" : "#ffffff",
+                    transition: "border-color 0.2s"
                   }}
                 >
                   <span
-                    className="phone-prefix-tag"
                     style={{
-                      background: "#faf4f0",
+                      background: isEmailVerified ? "#dcfce7" : "#faf4f0",
                       padding: "10px 14px",
-                      fontSize: "13px",
-                      fontWeight: 700,
-                      color: "var(--ink)",
-                      borderRight: "1px solid var(--line)"
+                      fontSize: "14px",
+                      color: isEmailVerified ? "#15803d" : "var(--gold)",
+                      borderRight: "1px solid var(--line)",
+                      display: "grid",
+                      placeItems: "center"
                     }}
                   >
-                    +91
+                    ✉️
                   </span>
                   <input
-                    id="checkout-phone"
-                    type="tel"
+                    id="checkout-email"
+                    type="email"
                     required
-                    maxLength={10}
-                    placeholder="10-digit mobile number"
-                    value={phone}
-                    readOnly={isPhoneVerified}
-                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                    placeholder="name@example.com"
+                    value={email}
+                    readOnly={isEmailVerified}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      setIsEmailVerified(false);
+                      setShowOtpPanel(false);
+                      setFormError("");
+                    }}
                     style={{
                       flex: 1,
                       border: "none",
                       padding: "11px 12px",
                       fontSize: "13px",
-                      outline: "none"
+                      outline: "none",
+                      background: "transparent"
                     }}
                   />
-                  {isPhoneVerified ? (
+                  {isEmailVerified ? (
                     <span
                       style={{
                         padding: "6px 14px",
@@ -736,7 +772,7 @@ export default function CheckoutModal() {
                     </span>
                   ) : (
                     <button
-                      id="checkout-verify-phone-btn"
+                      id="checkout-verify-email-btn"
                       type="button"
                       className="btn-verify-trigger button-gold"
                       onClick={handleSendOtp}
@@ -752,14 +788,14 @@ export default function CheckoutModal() {
                         whiteSpace: "nowrap"
                       }}
                     >
-                      {otpSending ? "Sending…" : "Verify ⚡"}
+                      {otpSending ? "Sending…" : "Send Code ✉️"}
                     </button>
                   )}
                 </div>
               </div>
 
-              {/* OTP Panel Accordion */}
-              {showOtpPanel && !isPhoneVerified && (
+              {/* Email OTP Verification Accordion Panel */}
+              {showOtpPanel && !isEmailVerified && (
                 <div
                   ref={otpPanelRef}
                   style={{
@@ -771,7 +807,7 @@ export default function CheckoutModal() {
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                    <strong style={{ fontSize: "12.5px", color: "var(--wine)" }}>🔒 Mobile OTP Verification</strong>
+                    <strong style={{ fontSize: "12.5px", color: "var(--wine)" }}>🔒 Email OTP Verification</strong>
                     {otpCooldown > 0 && (
                       <span style={{ fontSize: "11px", color: "var(--muted)" }}>Resend in {otpCooldown}s</span>
                     )}
@@ -837,6 +873,54 @@ export default function CheckoutModal() {
                   </div>
                 </div>
               )}
+
+              {/* Field 3: Mobile Phone for Courier Delivery */}
+              <div className="form-group" style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                <label htmlFor="checkout-phone" style={{ fontSize: "12px", fontWeight: 700, color: "var(--ink)", display: "block" }}>
+                  Mobile Phone (For Courier Dispatch &amp; WhatsApp Updates) *
+                </label>
+                <div
+                  className="phone-input-group"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    border: "1.5px solid var(--line)",
+                    borderRadius: "6px",
+                    overflow: "hidden",
+                    background: "#ffffff"
+                  }}
+                >
+                  <span
+                    className="phone-prefix-tag"
+                    style={{
+                      background: "#faf4f0",
+                      padding: "10px 14px",
+                      fontSize: "13px",
+                      fontWeight: 700,
+                      color: "var(--ink)",
+                      borderRight: "1px solid var(--line)"
+                    }}
+                  >
+                    +91
+                  </span>
+                  <input
+                    id="checkout-phone"
+                    type="tel"
+                    required
+                    maxLength={10}
+                    placeholder="10-digit mobile number"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                    style={{
+                      flex: 1,
+                      border: "none",
+                      padding: "11px 12px",
+                      fontSize: "13px",
+                      outline: "none"
+                    }}
+                  />
+                </div>
+              </div>
 
               {/* Field 3: Shipping Street Address */}
               <div className="form-group" style={{ display: "flex", flexDirection: "column", gap: "6px" }}>

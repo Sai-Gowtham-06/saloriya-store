@@ -3,6 +3,8 @@ import react from "@vitejs/plugin-react";
 import { resolve } from "path";
 import sendOtpHandler from "./api/otp/send.js";
 import verifyOtpHandler from "./api/otp/verify.js";
+import sendEmailOtpHandler from "./api/email-otp/send.js";
+import verifyEmailOtpHandler from "./api/email-otp/verify.js";
 
 import fs from "fs";
 
@@ -142,6 +144,29 @@ function vercelApiDevPlugin() {
             return sendOtpHandler(req, res);
           } else {
             return verifyOtpHandler(req, res);
+          }
+        }
+
+        if (url === "/api/email-otp/send" || url === "/api/email-otp/verify") {
+          let body = {};
+          if (req.method === "POST") {
+            const buffers = [];
+            for await (const chunk of req) {
+              buffers.push(chunk);
+            }
+            const raw = Buffer.concat(buffers).toString();
+            try {
+              body = JSON.parse(raw);
+            } catch (e) {
+              body = {};
+            }
+          }
+          req.body = body;
+
+          if (url === "/api/email-otp/send") {
+            return sendEmailOtpHandler(req, res);
+          } else {
+            return verifyEmailOtpHandler(req, res);
           }
         }
         next();

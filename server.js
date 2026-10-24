@@ -6,6 +6,8 @@ import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import sendOtpHandler from "./api/otp/send.js";
 import verifyOtpHandler from "./api/otp/verify.js";
+import sendEmailOtpHandler from "./api/email-otp/send.js";
+import verifyEmailOtpHandler from "./api/email-otp/verify.js";
 
 // Load environment variables from .env and .env.local
 dotenv.config();
@@ -137,6 +139,12 @@ app.post("/api/products", (req, res) => {
   writeProductsToFile(products);
   res.json({ success: true, products });
 });
+
+// OTP Endpoints
+app.post("/api/otp/send", sendOtpHandler);
+app.post("/api/otp/verify", verifyOtpHandler);
+app.post("/api/email-otp/send", sendEmailOtpHandler);
+app.post("/api/email-otp/verify", verifyEmailOtpHandler);
 
 // Serve frontend in production build
 if (process.env.NODE_ENV === "production") {

@@ -38,10 +38,10 @@
       "https://ybyboplrrovrhnnunkaa.supabase.co/storage/v1/object/public/product-images/8bc81f8a-0da5-4253-ad08-c28638af3721-Ornate-Ruby-and-Pearl-Jhumka-Earrings.png"
     ],
     "colours": [],
-    "stock": 13,
+    "stock": 12,
     "is_published": true,
     "created_at": "2026-10-23T10:35:50.732476+00:00",
-    "updated_at": "2026-10-24T08:54:23.528Z"
+    "updated_at": "2026-10-24T10:23:45.645Z"
   },
   {
     "id": "86132a0e-6532-46e8-8dd7-997a1b8c3940",
@@ -98,10 +98,10 @@
       "SKY BLUE",
       "RED"
     ],
-    "stock": 1,
+    "stock": 5,
     "is_published": true,
     "created_at": "2026-10-23T10:20:20.764931+00:00",
-    "updated_at": "2026-10-24T06:56:54.846Z"
+    "updated_at": "2026-10-24T10:23:50.467Z"
   },
   {
     "id": "84675dd2-70a1-47c5-966b-3f781ff0fbba",
@@ -114,10 +114,10 @@
       "https://ybyboplrrovrhnnunkaa.supabase.co/storage/v1/object/public/product-images/be78a53f-d082-425f-ab3f-e2e66e321026-Antique-Gold-Chandelier-Earrings-in-Pink-Velvet.png"
     ],
     "colours": [],
-    "stock": 0,
+    "stock": 5,
     "is_published": true,
     "created_at": "2026-10-23T11:36:50.876374+00:00",
-    "updated_at": "2026-10-24T08:31:01.220Z"
+    "updated_at": "2026-10-24T10:23:38.361Z"
   },
   {
     "id": "f2fe3613-d155-4dab-a11c-48aecac70369",
@@ -140,10 +140,10 @@
       "GREEN",
       "MAROON"
     ],
-    "stock": 0,
+    "stock": 6,
     "is_published": true,
     "created_at": "2026-10-23T11:47:00.55747+00:00",
-    "updated_at": "2026-10-24T08:02:20.521Z"
+    "updated_at": "2026-10-24T10:23:35.404Z"
   },
   {
     "id": "74126991-7775-4b06-9a6f-9c09788dcfbd",
@@ -156,10 +156,10 @@
       "https://ybyboplrrovrhnnunkaa.supabase.co/storage/v1/object/public/product-images/0d6e2270-60e1-4aec-af1f-fe3954b235bd-Ornate-Ruby-and-Emerald-Jhumka-Earrings.png"
     ],
     "colours": [],
-    "stock": 0,
+    "stock": 5,
     "is_published": true,
     "created_at": "2026-10-23T11:55:09.774749+00:00",
-    "updated_at": "2026-10-24T07:35:06.188Z"
+    "updated_at": "2026-10-24T10:23:26.995Z"
   },
   {
     "id": "f6ebe650-629a-4a3f-bf6c-ff07e1c0a53a",
@@ -176,10 +176,10 @@
       "BLUE",
       "RED"
     ],
-    "stock": 0,
+    "stock": 2,
     "is_published": false,
     "created_at": "2026-10-23T12:04:17.271918+00:00",
-    "updated_at": "2026-10-24T07:45:51.678Z"
+    "updated_at": "2026-10-24T10:23:24.077Z"
   },
   {
     "id": "198bedc5-e92f-49f3-8181-9fbada07ad65",
@@ -228,9 +228,9 @@
       "GREEN",
       "SKY BLUE"
     ],
-    "stock": 2,
+    "stock": 5,
     "is_published": true,
     "created_at": "2026-10-23T11:32:25.96304+00:00",
-    "updated_at": "2026-10-24T10:09:00.040Z"
+    "updated_at": "2026-10-24T10:23:41.854Z"
   }
 ]

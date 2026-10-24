@@ -84,22 +84,11 @@ export default async function handler(req, res) {
     // 6. Send branded HTML email via Nodemailer / Resend
     const sendResult = await sendOtpEmail({ email: normEmail, otp });
 
-    const isDev = process.env.NODE_ENV !== "production";
-    const smtpPass = process.env.SMTP_PASS || process.env.EMAIL_PASS;
-    const hasSmtp = smtpPass && smtpPass !== "your_gmail_app_password_here";
-
-    const responsePayload = {
+    return res.status(200).json({
       success: true,
-      message: `Verification code sent to ${normEmail}.`,
+      message: `Verification code sent to ${normEmail}. Please check your inbox and spam folder.`,
       cooldown: 60
-    };
-
-    // Include testOtp in development or when SMTP credentials are not yet configured so testing is never blocked
-    if (isDev || !hasSmtp) {
-      responsePayload.testOtp = otp;
-    }
-
-    return res.status(200).json(responsePayload);
+    });
   } catch (err) {
     console.error("Email OTP send error:", err);
     return res.status(500).json({

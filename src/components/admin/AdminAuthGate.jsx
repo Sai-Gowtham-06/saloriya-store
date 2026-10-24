@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
+import { supabase, isSupabaseConfigured } from "../../supabase.js";
 
 export default function AdminAuthGate({ onLoginSuccess }) {
   const [userId, setUserId] = useState("");
@@ -8,15 +9,15 @@ export default function AdminAuthGate({ onLoginSuccess }) {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Accepted management usernames and passwords
-  const VALID_USERS = ["admin", "saloriya", "saloriya_admin", "saloriyaofficial@gmail.com"];
-  const VALID_PASSWORDS = ["saloriya2026", "admin123"];
+  // Accepted fallback management usernames and passwords if offline or local testing
+  const FALLBACK_USERS = ["admin", "saloriya", "saloriya_admin", "saloriyaofficial@gmail.com"];
+  const FALLBACK_PASSWORDS = ["saloriya2026", "admin123"];
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
 
-    const cleanUser = userId.trim().toLowerCase();
+    const cleanUser = userId.trim();
     const cleanPass = password.trim();
 
     if (!cleanUser) {
@@ -30,16 +31,53 @@ export default function AdminAuthGate({ onLoginSuccess }) {
     }
 
     setIsSubmitting(true);
-    setTimeout(() => {
-      if (VALID_USERS.includes(cleanUser) && VALID_PASSWORDS.includes(cleanPass)) {
+
+    try {
+      // 1. Authenticate with Supabase Authentication as configured in Supabase
+      if (isSupabaseConfigured) {
+        const { data, error: sbError } = await supabase.auth.signInWithPassword({
+          email: cleanUser,
+          password: cleanPass
+        });
+
+        if (!sbError && data?.session) {
+          sessionStorage.setItem("saloriya_admin_auth", "true");
+          sessionStorage.setItem("saloriya_admin_user", data.session.user?.email || cleanUser);
+          onLoginSuccess();
+          return;
+        }
+
+        // 2. If Supabase fails, check fallback master credentials for offline resilience
+        if (
+          FALLBACK_USERS.includes(cleanUser.toLowerCase()) &&
+          FALLBACK_PASSWORDS.includes(cleanPass)
+        ) {
+          sessionStorage.setItem("saloriya_admin_auth", "true");
+          sessionStorage.setItem("saloriya_admin_user", cleanUser);
+          onLoginSuccess();
+          return;
+        }
+
+        setError(sbError?.message || "Invalid User ID or password. Please check your Supabase credentials.");
+        return;
+      }
+
+      // If Supabase is not configured, authenticate against local master credentials
+      if (
+        FALLBACK_USERS.includes(cleanUser.toLowerCase()) &&
+        FALLBACK_PASSWORDS.includes(cleanPass)
+      ) {
         sessionStorage.setItem("saloriya_admin_auth", "true");
         sessionStorage.setItem("saloriya_admin_user", cleanUser);
         onLoginSuccess();
       } else {
         setError("Invalid User ID or password. Please verify your credentials.");
-        setIsSubmitting(false);
       }
-    }, 200);
+    } catch (err) {
+      setError(err.message || "Authentication failed. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

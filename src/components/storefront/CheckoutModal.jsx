@@ -153,13 +153,11 @@ export default function CheckoutModal() {
 
       setShowOtpPanel(true);
       setOtpCooldown(data.cooldown || 60);
+      setOtpCode(""); // Always empty so customer enters the code received in their email
 
-      if (data.testOtp) {
-        setOtpCode(data.testOtp);
-      }
       setOtpNotice({
         type: "success",
-        text: `✓ 6-digit verification code sent to ${cleanEmail}.`
+        text: `✓ 6-digit verification code sent to ${cleanEmail}. Please check your email inbox (and spam folder) and type the code below.`
       });
 
       setTimeout(() => {

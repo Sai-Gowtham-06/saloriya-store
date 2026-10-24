@@ -61,6 +61,28 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
+    if (isSupabaseConfigured) {
+      supabase.auth.getSession().then(({ data }) => {
+        if (data?.session) {
+          setIsAuthenticated(true);
+          sessionStorage.setItem("saloriya_admin_auth", "true");
+        }
+      });
+
+      const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (session) {
+          setIsAuthenticated(true);
+          sessionStorage.setItem("saloriya_admin_auth", "true");
+        }
+      });
+
+      return () => {
+        authListener?.subscription?.unsubscribe?.();
+      };
+    }
+  }, []);
+
+  useEffect(() => {
     if (isAuthenticated) {
       loadOrders();
       fetchProducts();
@@ -72,8 +94,14 @@ export default function AdminPage() {
     setIsAuthenticated(true);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.auth.signOut();
+      } catch (e) {}
+    }
     sessionStorage.removeItem("saloriya_admin_auth");
+    sessionStorage.removeItem("saloriya_admin_user");
     setIsAuthenticated(false);
   };
 

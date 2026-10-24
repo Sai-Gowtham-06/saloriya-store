@@ -237,31 +237,45 @@ export async function sendOtpEmail({ email, otp }) {
     }
   }
 
-  // 2. Try Nodemailer SMTP (e.g. Gmail App Password)
+  // 2. Try Nodemailer SMTP (e.g. Gmail App Password or custom SMTP)
   if (smtpUser && smtpPass && smtpPass !== "your_gmail_app_password_here") {
     try {
-      const transporter = nodemailer.createTransport({
-        host: smtpHost,
-        port: smtpPort,
-        secure: smtpPort === 465, // true for 465, false for 587
-        auth: {
-          user: smtpUser,
-          pass: smtpPass
-        }
-      });
+      const isGmail = smtpHost.includes("gmail") || smtpUser.endsWith("@gmail.com");
+      const transporter = nodemailer.createTransport(
+        isGmail
+          ? {
+              service: "gmail",
+              auth: {
+                user: smtpUser,
+                pass: smtpPass.replace(/\s+/g, "") // remove any spaces in 16-char app password
+              }
+            }
+          : {
+              host: smtpHost,
+              port: smtpPort,
+              secure: smtpPort === 465,
+              auth: {
+                user: smtpUser,
+                pass: smtpPass
+              }
+            }
+      );
 
-      await transporter.sendMail({
+      const info = await transporter.sendMail({
         from: `"SALORIYA Store" <${smtpUser}>`,
         to: normEmail,
         subject: `💎 Your SALORIYA Order Verification Code: ${otp}`,
         html: htmlContent
       });
 
-      return { success: true, method: "nodemailer" };
+      console.log(`[SALORIYA EMAIL OTP] Successfully sent code to ${normEmail} via Nodemailer (Message ID: ${info.messageId})`);
+      return { success: true, method: "nodemailer", messageId: info.messageId };
     } catch (err) {
-      console.error("Nodemailer SMTP delivery error:", err);
-      // Fall through to fallback
+      console.error("[SALORIYA EMAIL OTP] Nodemailer SMTP delivery error:", err.message);
+      // Fall through to logging
     }
+  } else {
+    console.warn(`[SALORIYA EMAIL OTP NOTICE] Real email could not be sent to ${normEmail} because SMTP_USER and SMTP_PASS are not configured in .env.local.`);
   }
 
   // 3. Fallback / Dev Mode Logging

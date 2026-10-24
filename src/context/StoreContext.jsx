@@ -200,40 +200,61 @@ export function StoreProvider({ children }) {
 
   // Action: Delete Product
   const deleteProduct = async (productId) => {
-    const target = products.find((p) => p.id === productId || p.slug === productId);
+    const target = products.find(
+      (p) => String(p.id) === String(productId) || p.slug === String(productId)
+    );
     const slug = target?.slug;
     const id = target?.id || productId;
 
     // 1. Add to deleted IDs tracking
     try {
       const deleted = getDeletedIds();
-      if (!deleted.includes(id)) deleted.push(id);
-      if (slug && !deleted.includes(slug)) deleted.push(slug);
+      [id, productId, slug].forEach((val) => {
+        if (val && !deleted.includes(String(val))) {
+          deleted.push(String(val));
+        }
+      });
       localStorage.setItem("saloriya_deleted_product_ids", JSON.stringify(deleted));
     } catch (e) {}
 
     // 2. Remove immediately from local state
-    setProducts((prev) => prev.filter((p) => p.id !== id && (!slug || p.slug !== slug)));
+    setProducts((prev) =>
+      prev.filter(
+        (p) =>
+          String(p.id) !== String(id) &&
+          String(p.id) !== String(productId) &&
+          (!slug || p.slug !== slug) &&
+          p.slug !== String(productId)
+      )
+    );
 
     // 3. LocalStorage sync
     try {
       const local = JSON.parse(localStorage.getItem("saloriya_admin_products") || "[]");
-      const filtered = local.filter((p) => p.id !== id && (!slug || p.slug !== slug));
+      const filtered = local.filter(
+        (p) =>
+          String(p.id) !== String(id) &&
+          String(p.id) !== String(productId) &&
+          (!slug || p.slug !== slug) &&
+          p.slug !== String(productId)
+      );
       localStorage.setItem("saloriya_admin_products", JSON.stringify(filtered));
     } catch (e) {}
 
     // 4. API sync
     try {
-      await fetch(`/api/products/${id}`, { method: "DELETE" });
+      await fetch(`/api/products/${encodeURIComponent(id || productId)}`, { method: "DELETE" });
     } catch (e) {}
 
     // 5. Supabase sync
     if (isSupabaseConfigured) {
       try {
-        await supabase.from("products").delete().eq("id", id);
+        if (id) await supabase.from("products").delete().eq("id", id);
         if (slug) await supabase.from("products").delete().eq("slug", slug);
       } catch (e) {}
     }
+
+    return { success: true };
   };
 
   // Action: Save / Create Product

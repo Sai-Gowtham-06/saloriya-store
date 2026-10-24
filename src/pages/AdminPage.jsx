@@ -34,6 +34,14 @@ export default function AdminPage() {
     return 1;
   });
 
+  const getDeletedOrderIds = () => {
+    try {
+      return JSON.parse(localStorage.getItem("saloriya_deleted_order_ids") || "[]");
+    } catch (e) {
+      return [];
+    }
+  };
+
   const loadOrders = async () => {
     let list = [];
     if (isSupabaseConfigured) {
@@ -55,6 +63,17 @@ export default function AdminPage() {
         const local = JSON.parse(localStorage.getItem("saloriya_admin_orders") || "[]");
         if (Array.isArray(local)) list = local;
       } catch (e) {}
+    }
+
+    const deletedIds = getDeletedOrderIds();
+    if (deletedIds.length > 0) {
+      list = list.filter((o) => {
+        const oid = o.order_id ? String(o.order_id) : null;
+        const uid = o.id ? String(o.id) : null;
+        if (oid && deletedIds.some((d) => String(d) === oid)) return false;
+        if (uid && deletedIds.some((d) => String(d) === uid)) return false;
+        return true;
+      });
     }
 
     setOrders(list);

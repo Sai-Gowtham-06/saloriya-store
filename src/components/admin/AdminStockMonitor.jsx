@@ -1,10 +1,13 @@
 import React, { useState } from "react";
 import { useStore } from "../../context/StoreContext";
+import AdminDeleteConfirmModal from "./AdminDeleteConfirmModal.jsx";
 
 export default function AdminStockMonitor({ products, onProductChanged, onEditInStudio }) {
   const { updateProductStock, refreshCatalog, toggleProductPublish, deleteProduct } = useStore();
   const [refreshing, setRefreshing] = useState(false);
   const [refreshToast, setRefreshToast] = useState("");
+  const [deleteTargetProduct, setDeleteTargetProduct] = useState(null);
+  const [isDeletingProduct, setIsDeletingProduct] = useState(false);
 
   const formatMoney = (paise) => {
     return new Intl.NumberFormat("en-IN", {
@@ -27,10 +30,14 @@ export default function AdminStockMonitor({ products, onProductChanged, onEditIn
     if (onProductChanged) onProductChanged();
   };
 
-  const handleDeleteProduct = async (productId, productName) => {
-    if (!window.confirm(`Are you sure you want to delete "${productName}" from your store?`)) return;
-    await deleteProduct(productId);
-    setRefreshToast(`✓ "${productName}" deleted`);
+  const executeDeleteProduct = async (product) => {
+    if (!product) return;
+    setIsDeletingProduct(true);
+    const prodId = product.id || product.slug;
+    await deleteProduct(prodId);
+    setIsDeletingProduct(false);
+    setDeleteTargetProduct(null);
+    setRefreshToast(`✓ "${product.name}" deleted`);
     setTimeout(() => setRefreshToast(""), 3500);
     if (onProductChanged) onProductChanged();
   };
@@ -230,7 +237,7 @@ export default function AdminStockMonitor({ products, onProductChanged, onEditIn
                             type="button"
                             className="button button-small"
                             style={{ background: "#fee2e2", color: "#991b1b", border: "1px solid #fecaca", padding: "6px 9px" }}
-                            onClick={() => handleDeleteProduct(p.id, p.name)}
+                            onClick={() => setDeleteTargetProduct(p)}
                             title="Delete Piece"
                           >
                             🗑️
@@ -245,6 +252,18 @@ export default function AdminStockMonitor({ products, onProductChanged, onEditIn
           )}
         </div>
       </section>
+
+      {/* In-App Delete Confirmation Modal */}
+      <AdminDeleteConfirmModal
+        isOpen={!!deleteTargetProduct}
+        title="Delete Piece from Inventory"
+        itemName={deleteTargetProduct?.name}
+        message="Are you sure you want to permanently delete this piece from inventory and your store? This action cannot be undone."
+        confirmLabel="Yes, Delete"
+        isDeleting={isDeletingProduct}
+        onConfirm={() => executeDeleteProduct(deleteTargetProduct)}
+        onClose={() => setDeleteTargetProduct(null)}
+      />
     </div>
   );
 }

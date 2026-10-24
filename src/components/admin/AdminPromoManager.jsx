@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase, isSupabaseConfigured } from "../../supabase.js";
+import AdminDeleteConfirmModal from "./AdminDeleteConfirmModal.jsx";
 
 const DEFAULT_PROMOS = [
   { code: "FREEDELIVERY", discount_type: "free_delivery", amount: 50, description: "Complimentary Free Transport & Packaging (Waives ₹50 delivery)", is_active: true }
@@ -12,9 +13,21 @@ export default function AdminPromoManager({ onPromosUpdated }) {
   const [amount, setAmount] = useState("50");
   const [newDesc, setNewDesc] = useState("");
   const [msg, setMsg] = useState("");
+  const [deleteTargetPromo, setDeleteTargetPromo] = useState(null);
+  const [isDeletingPromo, setIsDeletingPromo] = useState(false);
+
+  const getDeletedPromoCodes = () => {
+    try {
+      return JSON.parse(localStorage.getItem("saloriya_deleted_promo_codes") || "[]");
+    } catch (e) {
+      return [];
+    }
+  };
 
   const loadPromos = async () => {
     let list = [];
+    const deletedCodes = getDeletedPromoCodes();
+
     if (isSupabaseConfigured) {
       try {
         const { data, error } = await supabase.from("promo_codes").select("*").order("created_at", { ascending: false });
@@ -38,7 +51,12 @@ export default function AdminPromoManager({ onPromosUpdated }) {
       } catch (e) {}
     }
 
-    if (!list.length) {
+    // Filter out explicitly deleted codes
+    if (deletedCodes.length > 0) {
+      list = list.filter((p) => !deletedCodes.includes(p.code));
+    }
+
+    if (!list.length && !deletedCodes.includes("FREEDELIVERY") && !localStorage.getItem("saloriya_promo_initialized")) {
       list = DEFAULT_PROMOS;
     }
 
@@ -77,6 +95,13 @@ export default function AdminPromoManager({ onPromosUpdated }) {
       created_at: new Date().toISOString()
     };
 
+    // Remove from deleted codes if previously deleted
+    try {
+      const deleted = getDeletedPromoCodes().filter((c) => c !== code);
+      localStorage.setItem("saloriya_deleted_promo_codes", JSON.stringify(deleted));
+      localStorage.setItem("saloriya_promo_initialized", "true");
+    } catch (e) {}
+
     try {
       if (isSupabaseConfigured) {
         await supabase.from("promo_codes").insert([newPromo]);
@@ -93,19 +118,37 @@ export default function AdminPromoManager({ onPromosUpdated }) {
     if (onPromosUpdated) onPromosUpdated(updated.length);
   };
 
-  const handleDeletePromo = async (code) => {
-    if (!window.confirm(`Delete promo code "${code}"? Customers will no longer be able to use it.`)) return;
+  const executeDeletePromo = async (promo) => {
+    if (!promo) return;
+    setIsDeletingPromo(true);
+    const code = promo.code;
 
+    // 1. Add to deleted tracking
+    try {
+      const deleted = getDeletedPromoCodes();
+      if (!deleted.includes(code)) deleted.push(code);
+      localStorage.setItem("saloriya_deleted_promo_codes", JSON.stringify(deleted));
+      localStorage.setItem("saloriya_promo_initialized", "true");
+    } catch (e) {}
+
+    // 2. Delete from Supabase
     try {
       if (isSupabaseConfigured) {
         await supabase.from("promo_codes").delete().eq("code", code);
       }
     } catch (e) {}
 
+    // 3. Update localStorage and local state
     const updated = promos.filter((p) => p.code !== code);
-    localStorage.setItem("saloriya_admin_promo_codes", JSON.stringify(updated));
+    try {
+      localStorage.setItem("saloriya_admin_promo_codes", JSON.stringify(updated));
+    } catch (e) {}
+
     setPromos(updated);
-    setMsg(`Promo code "${code}" removed.`);
+    setIsDeletingPromo(false);
+    setDeleteTargetPromo(null);
+    setMsg(`✓ Promo voucher "${code}" removed.`);
+    setTimeout(() => setMsg(""), 3500);
     if (onPromosUpdated) onPromosUpdated(updated.length);
   };
 
@@ -341,7 +384,7 @@ export default function AdminPromoManager({ onPromosUpdated }) {
                           type="button"
                           className="button button-small"
                           style={{ background: "#fee2e2", color: "#b91c1c", border: "1px solid #fecaca" }}
-                          onClick={() => handleDeletePromo(p.code)}
+                          onClick={() => setDeleteTargetPromo(p)}
                         >
                           Remove
                         </button>
@@ -354,6 +397,18 @@ export default function AdminPromoManager({ onPromosUpdated }) {
           </div>
         </div>
       </section>
+
+      {/* In-App Delete Confirmation Modal */}
+      <AdminDeleteConfirmModal
+        isOpen={!!deleteTargetPromo}
+        title="Delete Promo Voucher"
+        itemName={deleteTargetPromo ? `Code: ${deleteTargetPromo.code}` : ""}
+        message="Are you sure you want to permanently remove this promo code? Customers will no longer be able to use it at checkout."
+        confirmLabel="Yes, Remove"
+        isDeleting={isDeletingPromo}
+        onConfirm={() => executeDeletePromo(deleteTargetPromo)}
+        onClose={() => setDeleteTargetPromo(null)}
+      />
     </div>
   );
 }

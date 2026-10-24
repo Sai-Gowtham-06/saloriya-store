@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from "react";
 import { useStore } from "../../context/StoreContext";
 import { supabase, isSupabaseConfigured } from "../../supabase.js";
+import AdminDeleteConfirmModal from "./AdminDeleteConfirmModal.jsx";
 
 export default function AdminProductStudio({ products, onProductChanged, editingProduct, setEditingProduct }) {
   const {
@@ -20,6 +21,8 @@ export default function AdminProductStudio({ products, onProductChanged, editing
   const [sortOrder, setSortOrder] = useState("newest");
   const [refreshing, setRefreshing] = useState(false);
   const [refreshToast, setRefreshToast] = useState("");
+  const [deleteTargetProduct, setDeleteTargetProduct] = useState(null);
+  const [isDeletingProduct, setIsDeletingProduct] = useState(false);
 
   // Form Fields
   const [formData, setFormData] = useState({
@@ -203,10 +206,14 @@ export default function AdminProductStudio({ products, onProductChanged, editing
   };
 
   // Delete product
-  const handleDeleteProduct = async (productId, productName) => {
-    if (!window.confirm(`Are you sure you want to delete "${productName}" from your store?`)) return;
-    await deleteProduct(productId);
-    setRefreshToast(`✓ "${productName}" deleted`);
+  const executeDeleteProduct = async (product) => {
+    if (!product) return;
+    setIsDeletingProduct(true);
+    const prodId = product.id || product.slug;
+    await deleteProduct(prodId);
+    setIsDeletingProduct(false);
+    setDeleteTargetProduct(null);
+    setRefreshToast(`✓ "${product.name}" deleted from store`);
     setTimeout(() => setRefreshToast(""), 3500);
     if (onProductChanged) onProductChanged();
   };
@@ -788,7 +795,7 @@ export default function AdminProductStudio({ products, onProductChanged, editing
                     type="button"
                     className="button button-small"
                     style={{ background: "#fee2e2", color: "#991b1b", border: "1px solid #fecaca", marginLeft: "auto" }}
-                    onClick={() => handleDeleteProduct(p.id, p.name)}
+                    onClick={() => setDeleteTargetProduct(p)}
                   >
                     🗑️ Delete
                   </button>
@@ -798,6 +805,18 @@ export default function AdminProductStudio({ products, onProductChanged, editing
           })
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <AdminDeleteConfirmModal
+        isOpen={!!deleteTargetProduct}
+        title="Delete Piece from Catalogue"
+        itemName={deleteTargetProduct?.name}
+        message="Are you sure you want to permanently delete this piece from your store catalogue? This action cannot be undone."
+        confirmLabel="Yes, Delete"
+        isDeleting={isDeletingProduct}
+        onConfirm={() => executeDeleteProduct(deleteTargetProduct)}
+        onClose={() => setDeleteTargetProduct(null)}
+      />
     </div>
   );
 }

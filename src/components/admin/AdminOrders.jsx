@@ -1,12 +1,16 @@
 import React, { useState } from "react";
 import { getColourImage } from "../../context/StoreContext";
 import { supabase, isSupabaseConfigured } from "../../supabase.js";
+import AdminDeleteConfirmModal from "./AdminDeleteConfirmModal.jsx";
 
 export default function AdminOrders({ orders, products = [], onOrderUpdated, onOpenRecordOrder }) {
   const [paymentFilter, setPaymentFilter] = useState("all"); // 'all' | 'prepaid' | 'cod'
   const [statusFilter, setStatusFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedScreenshot, setSelectedScreenshot] = useState(null);
+  const [deleteTargetOrder, setDeleteTargetOrder] = useState(null);
+  const [isDeletingOrder, setIsDeletingOrder] = useState(false);
+  const [orderToast, setOrderToast] = useState("");
 
   const formatMoney = (paise) => {
     return new Intl.NumberFormat("en-IN", {
@@ -37,22 +41,55 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
     onOrderUpdated();
   };
 
-  const handleDeleteOrder = async (orderId) => {
-    if (!window.confirm(`Delete order record #${orderId}? This cannot be undone.`)) return;
+  const executeDeleteOrder = async (order) => {
+    if (!order) return;
+    setIsDeletingOrder(true);
+    const orderId = order.order_id || order.id;
+    const dbId = order.id;
 
+    // 1. Add to deleted tracking list
     try {
-      if (isSupabaseConfigured) {
-        await supabase.from("orders").delete().eq("order_id", orderId);
-      }
+      const deleted = JSON.parse(localStorage.getItem("saloriya_deleted_order_ids") || "[]");
+      [orderId, dbId].forEach((val) => {
+        if (val && !deleted.includes(String(val))) {
+          deleted.push(String(val));
+        }
+      });
+      localStorage.setItem("saloriya_deleted_order_ids", JSON.stringify(deleted));
     } catch (e) {}
 
+    // 2. Remove from localStorage
     try {
       const local = JSON.parse(localStorage.getItem("saloriya_admin_orders") || "[]");
-      const filtered = local.filter((o) => o.order_id !== orderId);
+      const filtered = local.filter((o) => {
+        const oid = o.order_id || o.id;
+        const uid = o.id;
+        return (
+          String(oid) !== String(orderId) &&
+          String(oid) !== String(dbId) &&
+          String(uid) !== String(orderId) &&
+          String(uid) !== String(dbId)
+        );
+      });
       localStorage.setItem("saloriya_admin_orders", JSON.stringify(filtered));
     } catch (e) {}
 
-    onOrderUpdated();
+    // 3. Delete from Supabase
+    try {
+      if (isSupabaseConfigured) {
+        if (order.order_id) await supabase.from("orders").delete().eq("order_id", order.order_id);
+        if (order.id) await supabase.from("orders").delete().eq("id", order.id);
+      }
+    } catch (e) {
+      console.warn("Supabase delete order:", e);
+    }
+
+    setIsDeletingOrder(false);
+    setDeleteTargetOrder(null);
+    setOrderToast(`✓ Order #${orderId} deleted successfully`);
+    setTimeout(() => setOrderToast(""), 3500);
+
+    if (onOrderUpdated) onOrderUpdated();
   };
 
   const filteredOrders = orders.filter((o) => {
@@ -385,7 +422,7 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
                       type="button"
                       className="button button-small"
                       style={{ background: "#fee2e2", color: "#991b1b", border: "1px solid #fecaca", marginLeft: "8px" }}
-                      onClick={() => handleDeleteOrder(order.order_id)}
+                      onClick={() => setDeleteTargetOrder(order)}
                     >
                       Delete
                     </button>
@@ -412,6 +449,43 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
               <img src={selectedScreenshot} alt="Payment Proof" style={{ maxWidth: "100%", borderRadius: "8px" }} />
             </div>
           </div>
+        </div>
+      )}
+
+      {/* In-App Delete Confirmation Modal */}
+      <AdminDeleteConfirmModal
+        isOpen={!!deleteTargetOrder}
+        title="Delete Order Record"
+        itemName={
+          deleteTargetOrder
+            ? `Order #${deleteTargetOrder.order_id || deleteTargetOrder.id} — ${deleteTargetOrder.customer_name || "Customer"}`
+            : ""
+        }
+        message="Are you sure you want to permanently delete this order record? This cannot be undone."
+        confirmLabel="Yes, Delete"
+        isDeleting={isDeletingOrder}
+        onConfirm={() => executeDeleteOrder(deleteTargetOrder)}
+        onClose={() => setDeleteTargetOrder(null)}
+      />
+
+      {/* Order Toast Notification */}
+      {orderToast && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: "24px",
+            right: "24px",
+            background: "#15803d",
+            color: "#ffffff",
+            padding: "12px 20px",
+            borderRadius: "8px",
+            fontSize: "13px",
+            fontWeight: 600,
+            boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
+            zIndex: 99999
+          }}
+        >
+          {orderToast}
         </div>
       )}
     </div>

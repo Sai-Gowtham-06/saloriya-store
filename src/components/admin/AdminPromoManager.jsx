@@ -2,9 +2,7 @@ import React, { useState, useEffect } from "react";
 import { supabase, isSupabaseConfigured } from "../../supabase.js";
 
 const DEFAULT_PROMOS = [
-  { code: "FREEDELIVERY", discount_type: "free_delivery", amount: 50, description: "Complimentary Free Transport & Packaging (Waives ₹50 delivery)", is_active: true },
-  { code: "SALORIYA50", discount_type: "fixed_amount", amount: 50, description: "Flat ₹50.00 OFF Instant Discount", is_active: true },
-  { code: "GOLD2026", discount_type: "free_delivery", amount: 50, description: "Special Festival Free Delivery Voucher", is_active: true }
+  { code: "FREEDELIVERY", discount_type: "free_delivery", amount: 50, description: "Complimentary Free Transport & Packaging (Waives ₹50 delivery)", is_active: true }
 ];
 
 export default function AdminPromoManager({ onPromosUpdated }) {
@@ -29,14 +27,24 @@ export default function AdminPromoManager({ onPromosUpdated }) {
     if (!list.length) {
       try {
         const local = JSON.parse(localStorage.getItem("saloriya_admin_promo_codes") || "[]");
-        if (Array.isArray(local) && local.length > 0) list = local;
+        if (Array.isArray(local) && local.length > 0) {
+          // If local contains only the old 3 default codes, keep only FREEDELIVERY
+          const isOld3Defaults = local.length === 3 &&
+            local.some((p) => p.code === "FREEDELIVERY") &&
+            local.some((p) => p.code === "SALORIYA50") &&
+            local.some((p) => p.code === "GOLD2026");
+          list = isOld3Defaults ? DEFAULT_PROMOS : local;
+        }
       } catch (e) {}
     }
 
     if (!list.length) {
       list = DEFAULT_PROMOS;
-      localStorage.setItem("saloriya_admin_promo_codes", JSON.stringify(list));
     }
+
+    try {
+      localStorage.setItem("saloriya_admin_promo_codes", JSON.stringify(list));
+    } catch (e) {}
 
     setPromos(list);
     if (onPromosUpdated) onPromosUpdated(list.length);

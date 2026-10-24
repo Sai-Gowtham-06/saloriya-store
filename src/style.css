@@ -5588,6 +5588,41 @@ body.modal-open {
   animation: modalFadeIn 0.3s ease-out;
 }
 
+/* Storefront Checkout Promo Box Alignment */
+.checkout-promo-box {
+  box-sizing: border-box !important;
+  width: 100% !important;
+}
+
+.checkout-promo-box .promo-input-row {
+  display: flex !important;
+  align-items: stretch !important;
+  gap: 8px !important;
+  width: 100% !important;
+}
+
+.checkout-promo-box input#checkout-promo-input {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  width: 100% !important;
+  height: 42px !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+}
+
+.checkout-promo-box button#checkout-apply-promo-btn {
+  flex: 0 0 auto !important;
+  width: auto !important;
+  min-width: 90px !important;
+  height: 42px !important;
+  margin: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  white-space: nowrap !important;
+  box-sizing: border-box !important;
+}
+
 
 
 

@@ -158,6 +158,13 @@ export default defineConfig(({ mode }) => {
     plugins: [react(), vercelApiDevPlugin()],
     server: {
       port: 5173,
+      watch: {
+        ignored: [
+          "**/src/productsSeed.json",
+          "**/productsSeed.json",
+          resolve(__dirname, "src/productsSeed.json")
+        ]
+      }
     },
     build: {
       rollupOptions: {

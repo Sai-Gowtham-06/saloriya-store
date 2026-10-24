@@ -20,7 +20,19 @@ export default function AdminPage() {
   const [orders, setOrders] = useState([]);
   const [editingProduct, setEditingProduct] = useState(null);
   const [showRecordModal, setShowRecordModal] = useState(false);
-  const [promosCount, setPromosCount] = useState(3);
+  const [promosCount, setPromosCount] = useState(() => {
+    try {
+      const local = JSON.parse(localStorage.getItem("saloriya_admin_promo_codes") || "[]");
+      if (Array.isArray(local) && local.length > 0) {
+        const isOld3Defaults = local.length === 3 &&
+          local.some((p) => p.code === "FREEDELIVERY") &&
+          local.some((p) => p.code === "SALORIYA50") &&
+          local.some((p) => p.code === "GOLD2026");
+        return isOld3Defaults ? 1 : local.length;
+      }
+    } catch (e) {}
+    return 1;
+  });
 
   const loadOrders = async () => {
     let list = [];

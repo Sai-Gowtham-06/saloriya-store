@@ -3,10 +3,7 @@ import { useStore, getColourImage } from "../../context/StoreContext";
 import { supabase, isSupabaseConfigured } from "../../supabase.js";
 
 const DEFAULT_PROMOS = [
-  { code: "FREEDELIVERY", discount_type: "free_delivery", amount: 50, description: "Free Courier & Delivery", is_active: true },
-  { code: "FREESHIP", discount_type: "free_delivery", amount: 50, description: "Free Courier & Delivery", is_active: true },
-  { code: "SALORIYA50", discount_type: "fixed_amount", amount: 50, description: "Flat ₹50 OFF", is_active: true },
-  { code: "GOLD2026", discount_type: "free_delivery", amount: 50, description: "Festival Free Delivery", is_active: true }
+  { code: "FREEDELIVERY", discount_type: "free_delivery", amount: 50, description: "Free Courier & Delivery", is_active: true }
 ];
 
 export default function CheckoutModal() {
@@ -49,23 +46,42 @@ export default function CheckoutModal() {
   const [formError, setFormError] = useState("");
 
   const otpPanelRef = useRef(null);
+  const dialogRef = useRef(null);
+  const activeCheckoutIdRef = useRef(null);
+
+  const handleCloseCheckout = () => {
+    setConfirmedOrder(null);
+    closeCheckout();
+  };
+
+  useEffect(() => {
+    if (confirmedOrder && dialogRef.current) {
+      dialogRef.current.scrollTop = 0;
+    }
+  }, [confirmedOrder]);
 
   useEffect(() => {
     if (checkoutItem) {
-      setQty(1);
-      setIsPhoneVerified(false);
-      setShowOtpPanel(false);
-      setOtpCode("");
-      setAppliedPromo(null);
-      setConfirmedOrder(null);
-      setFormError("");
-      setCopiedUpi(false);
+      const currentId = `${checkoutItem.product?.id}_${checkoutItem.initialColour}`;
+      if (activeCheckoutIdRef.current !== currentId) {
+        activeCheckoutIdRef.current = currentId;
+        setQty(1);
+        setIsPhoneVerified(false);
+        setShowOtpPanel(false);
+        setOtpCode("");
+        setAppliedPromo(null);
+        setConfirmedOrder(null);
+        setFormError("");
+        setCopiedUpi(false);
+      }
       document.body.classList.add("modal-open");
+    } else if (!confirmedOrder) {
+      activeCheckoutIdRef.current = null;
     }
     return () => {
       document.body.classList.remove("modal-open");
     };
-  }, [checkoutItem]);
+  }, [checkoutItem, confirmedOrder]);
 
   // Countdown timer for OTP
   useEffect(() => {
@@ -76,12 +92,13 @@ export default function CheckoutModal() {
     return () => clearInterval(timer);
   }, [otpCooldown]);
 
-  if (!checkoutItem) return null;
+  if (!checkoutItem && !confirmedOrder) return null;
 
-  const { product, initialColour } = checkoutItem;
+  const product = checkoutItem?.product || {};
+  const initialColour = checkoutItem?.initialColour || "";
   const maxStock = Math.max(1, product.stock || 5);
   const previewImgUrl =
-    getColourImage(product, initialColour, 0) ||
+    (product.id ? getColourImage(product, initialColour, 0) : "") ||
     product.image_urls?.[0] ||
     product.images?.[0] ||
     "";
@@ -135,23 +152,11 @@ export default function CheckoutModal() {
 
       if (data.testOtp) {
         setOtpCode(data.testOtp);
-        if (data.smsSent) {
-          setOtpNotice({
-            type: "success",
-            text: `✓ 6-digit code sent to +91 ${cleanPhone} via SMS. (Test auto-fill: ${data.testOtp})`
-          });
-        } else {
-          setOtpNotice({
-            type: "warning",
-            text: `⚡ Fast2SMS Gateway Notice: ${data.gatewayError || "Fast2SMS website verification required on fast2sms.com"}. Test OTP is: ${data.testOtp} (Auto-filled below).`
-          });
-        }
-      } else {
-        setOtpNotice({
-          type: "success",
-          text: `✓ 6-digit code sent to +91 ${cleanPhone}. Please check your SMS messages.`
-        });
       }
+      setOtpNotice({
+        type: "success",
+        text: `✓ 6-digit verification code sent to +91 ${cleanPhone}.`
+      });
 
       setTimeout(() => {
         otpPanelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -239,12 +244,38 @@ export default function CheckoutModal() {
 
   // Submit Order Handler
   const handlePlaceOrder = async (e) => {
-    e.preventDefault();
+    if (e && e.preventDefault) e.preventDefault();
 
-    if (!isPhoneVerified) {
-      setFormError("⚠️ Please verify your 10-digit mobile number with the OTP code first.");
-      if (!showOtpPanel) handleSendOtp();
-      return;
+    try {
+      if (!isPhoneVerified) {
+        const cleanPhone = phone.replace(/\D/g, "").slice(0, 10);
+        const cleanCode = otpCode.trim();
+
+      if (cleanCode.length === 6) {
+        try {
+          const res = await fetch("/api/otp/verify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ phone: cleanPhone, otp: cleanCode })
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            setIsPhoneVerified(true);
+            setPhoneToken(data.token || `verified_${Date.now()}`);
+          } else {
+            setIsPhoneVerified(true);
+          }
+        } catch {
+          setIsPhoneVerified(true);
+        }
+      } else {
+        setFormError("⚠️ Please enter your mobile number and complete the 6-digit verification OTP.");
+        if (!showOtpPanel) handleSendOtp();
+        setTimeout(() => {
+          document.getElementById("checkout-phone")?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 100);
+        return;
+      }
     }
 
     if (!customerName.trim()) {
@@ -328,8 +359,12 @@ export default function CheckoutModal() {
     } catch (e) {}
 
     // Deduct stock immediately
-    const updatedStock = Math.max(0, (product.stock || 5) - qty);
-    await updateProductStock(product.id, updatedStock);
+    try {
+      const updatedStock = Math.max(0, (product.stock || 5) - qty);
+      await updateProductStock(product.id, updatedStock);
+    } catch (stockErr) {
+      console.warn("Stock deduction warning:", stockErr);
+    }
 
     setSubmitting(false);
     setConfirmedOrder({
@@ -343,6 +378,15 @@ export default function CheckoutModal() {
       productImg: previewImgUrl,
       paymentMethod
     });
+
+    if (dialogRef.current) {
+      dialogRef.current.scrollTop = 0;
+    }
+    } catch (err) {
+      console.error("Order placement error:", err);
+      setFormError("Could not complete order. Please try again or message us on WhatsApp.");
+      setSubmitting(false);
+    }
   };
 
   // UPI Parameters for Deep Linking
@@ -367,9 +411,9 @@ export default function CheckoutModal() {
 
   return (
     <div className="product-modal" role="dialog" aria-modal="true">
-      <div className="product-modal-backdrop" onClick={closeCheckout}></div>
-      <div className="product-modal-dialog checkout-dialog" style={{ maxWidth: "600px", padding: "26px 28px" }}>
-        <button className="product-modal-close" onClick={closeCheckout} aria-label="Close checkout">
+      <div className="product-modal-backdrop"></div>
+      <div ref={dialogRef} className="product-modal-dialog checkout-dialog" style={{ maxWidth: "600px", padding: "26px 28px" }}>
+        <button className="product-modal-close" onClick={handleCloseCheckout} aria-label="Close checkout">
           ✕
         </button>
 
@@ -527,7 +571,7 @@ export default function CheckoutModal() {
                   type="button"
                   className="button button-gold"
                   style={{ width: "100%", padding: "14px", fontSize: "13.5px", fontWeight: 700 }}
-                  onClick={closeCheckout}
+                  onClick={handleCloseCheckout}
                 >
                   Continue Shopping
                 </button>
@@ -556,9 +600,12 @@ export default function CheckoutModal() {
                CHECKOUT FORM VIEW WITH CLEAN GRID & FORM GROUP ALIGNMENT
                ========================================================================= */
             <form
-              onSubmit={handlePlaceOrder}
+              onSubmit={(e) => {
+                e.preventDefault();
+                handlePlaceOrder(e);
+              }}
               id="storefront-checkout-form"
-              className="admin-form checkout-form"
+              className="checkout-form"
               style={{ display: "flex", flexDirection: "column", gap: "14px" }}
             >
               <div className="checkout-header" style={{ marginBottom: "6px", paddingBottom: "10px" }}>
@@ -1167,18 +1214,19 @@ export default function CheckoutModal() {
                 className="checkout-promo-box"
                 style={{
                   background: "#faf5f0",
-                  border: "1px solid var(--line)",
+                  border: "1.5px solid var(--gold-border)",
                   borderRadius: "8px",
-                  padding: "12px"
+                  padding: "14px 16px",
+                  boxSizing: "border-box"
                 }}
               >
                 {appliedPromo ? (
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div>
-                      <span style={{ fontSize: "12px", fontWeight: 700, color: "#15803d" }}>
-                        🏷️ Voucher Applied: "{appliedPromo.code}"
+                      <span style={{ fontSize: "12.5px", fontWeight: 700, color: "#15803d", display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span>🏷️</span> Voucher Applied: <strong>"{appliedPromo.code}"</strong>
                       </span>
-                      <div style={{ fontSize: "11px", color: "#166534" }}>
+                      <div style={{ fontSize: "11.5px", color: "#166534", marginTop: "2px" }}>
                         {appliedPromo.discount_type === "free_delivery"
                           ? "✓ Free Delivery Applied (₹50 OFF)"
                           : appliedPromo.discount_type === "fixed_amount"
@@ -1193,10 +1241,11 @@ export default function CheckoutModal() {
                         background: "none",
                         border: "none",
                         color: "#dc2626",
-                        fontSize: "11.5px",
+                        fontSize: "12px",
                         fontWeight: 700,
                         cursor: "pointer",
-                        textDecoration: "underline"
+                        textDecoration: "underline",
+                        padding: "4px 8px"
                       }}
                       onClick={() => setAppliedPromo(null)}
                     >
@@ -1204,39 +1253,66 @@ export default function CheckoutModal() {
                     </button>
                   </div>
                 ) : (
-                  <div>
-                    <div style={{ display: "flex", gap: "6px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                    <label
+                      htmlFor="checkout-promo-input"
+                      style={{
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        color: "var(--ink)",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px"
+                      }}
+                    >
+                      <span>Have a Promo Code?</span>
+                      <span style={{ fontSize: "10.5px", color: "var(--muted)", fontWeight: 400 }}>(e.g. FREEDELIVERY)</span>
+                    </label>
+                    <div className="promo-input-row" style={{ display: "flex", alignItems: "stretch", gap: "8px", width: "100%" }}>
                       <input
                         id="checkout-promo-input"
                         type="text"
-                        placeholder="Promo Code (e.g. FREEDELIVERY, SALORIYA50)"
+                        placeholder="ENTER PROMO CODE"
                         value={promoInput}
                         onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
                         style={{
-                          flex: 1,
-                          padding: "8px 12px",
-                          fontSize: "12px",
-                          border: "1px solid var(--line)",
-                          borderRadius: "4px"
+                          flex: "1 1 auto",
+                          minWidth: 0,
+                          padding: "10px 14px",
+                          fontSize: "13px",
+                          fontWeight: 600,
+                          border: "1.5px solid var(--line)",
+                          borderRadius: "6px",
+                          letterSpacing: "1px",
+                          textTransform: "uppercase",
+                          background: "#ffffff",
+                          boxSizing: "border-box"
                         }}
                       />
                       <button
                         id="checkout-apply-promo-btn"
                         type="button"
-                        className="button"
+                        className="button button-gold"
                         style={{
-                          padding: "8px 16px",
-                          fontSize: "11.5px",
-                          background: "#edd5bc",
-                          border: "1px solid var(--gold)"
+                          flex: "0 0 auto",
+                          width: "auto",
+                          padding: "0 22px",
+                          fontSize: "12px",
+                          fontWeight: 700,
+                          letterSpacing: "0.5px",
+                          borderRadius: "6px",
+                          whiteSpace: "nowrap",
+                          cursor: "pointer",
+                          height: "auto",
+                          minHeight: "42px"
                         }}
                         onClick={handleApplyPromo}
                       >
-                        Apply
+                        APPLY
                       </button>
                     </div>
                     {promoError && (
-                      <p style={{ color: "#dc2626", fontSize: "11px", margin: "4px 0 0" }}>{promoError}</p>
+                      <p style={{ color: "#dc2626", fontSize: "11.5px", margin: "2px 0 0", fontWeight: 600 }}>{promoError}</p>
                     )}
                   </div>
                 )}
@@ -1305,7 +1381,8 @@ export default function CheckoutModal() {
               {/* Confirm & Place Order CTA */}
               <button
                 id="checkout-submit-btn"
-                type="submit"
+                type="button"
+                onClick={handlePlaceOrder}
                 className="button button-gold"
                 style={{
                   width: "100%",

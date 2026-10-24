@@ -192,7 +192,6 @@ export default function AdminProductStudio({ products, onProductChanged, editing
   const handleStockDelta = async (productId, currentStock, delta) => {
     const newStock = Math.max(0, currentStock + delta);
     await updateProductStock(productId, newStock);
-    if (onProductChanged) onProductChanged();
   };
 
   // Toggle publish

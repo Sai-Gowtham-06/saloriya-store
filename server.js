@@ -109,13 +109,7 @@ app.put("/api/products/:id/publish", (req, res) => {
 app.delete("/api/products/:id", (req, res) => {
   const { id } = req.params;
   let products = readProductsFromFile();
-  const initialLength = products.length;
-  products = products.filter((p) => p.id !== id);
-
-  if (products.length === initialLength) {
-    return res.status(404).json({ success: false, error: "Product not found" });
-  }
-
+  products = products.filter((p) => p.id !== id && p.slug !== id);
   writeProductsToFile(products);
   res.json({ success: true, message: "Product deleted" });
 });

@@ -98,9 +98,7 @@ function vercelApiDevPlugin() {
             const parts = url.split("/");
             const id = parts[parts.length - 1];
             let products = readProducts();
-            const initLen = products.length;
-            products = products.filter((p) => p.id !== id);
-            if (products.length === initLen) return res.status(404).json({ success: false, error: "Product not found" });
+            products = products.filter((p) => p.id !== id && p.slug !== id);
             writeProducts(products);
             return res.json({ success: true, message: "Product deleted" });
           }

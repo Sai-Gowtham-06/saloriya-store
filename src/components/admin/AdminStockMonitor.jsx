@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useStore } from "../../context/StoreContext";
 
 export default function AdminStockMonitor({ products, onProductChanged, onEditInStudio }) {
-  const { updateProductStock, refreshCatalog } = useStore();
+  const { updateProductStock, refreshCatalog, toggleProductPublish, deleteProduct } = useStore();
   const [refreshing, setRefreshing] = useState(false);
   const [refreshToast, setRefreshToast] = useState("");
 
@@ -17,6 +17,21 @@ export default function AdminStockMonitor({ products, onProductChanged, onEditIn
   const handleStockUpdate = async (productId, currentStock, delta) => {
     const newStock = Math.max(0, currentStock + delta);
     await updateProductStock(productId, newStock);
+  };
+
+  const handleTogglePublish = async (productId, currentStatus) => {
+    await toggleProductPublish(productId, !currentStatus);
+    setRefreshToast("✓ Visibility updated");
+    setTimeout(() => setRefreshToast(""), 2500);
+    if (onProductChanged) onProductChanged();
+  };
+
+  const handleDeleteProduct = async (productId, productName) => {
+    if (!window.confirm(`Are you sure you want to delete "${productName}" from your store?`)) return;
+    await deleteProduct(productId);
+    setRefreshToast(`✓ "${productName}" deleted`);
+    setTimeout(() => setRefreshToast(""), 3500);
+    if (onProductChanged) onProductChanged();
   };
 
   const handleRefresh = async () => {
@@ -82,7 +97,7 @@ export default function AdminStockMonitor({ products, onProductChanged, onEditIn
                   <th>Current Stock</th>
                   <th>Status</th>
                   <th>Quick Restock</th>
-                  <th>Studio</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -193,13 +208,33 @@ export default function AdminStockMonitor({ products, onProductChanged, onEditIn
                         </div>
                       </td>
                       <td>
-                        <button
-                          type="button"
-                          className="button button-small button-outline"
-                          onClick={() => onEditInStudio(p)}
-                        >
-                          ✏️ Edit
-                        </button>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <button
+                            type="button"
+                            className="button button-small button-outline"
+                            onClick={() => onEditInStudio(p)}
+                            title="Edit in Studio"
+                          >
+                            ✏️ Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="button button-small button-outline"
+                            onClick={() => handleTogglePublish(p.id, p.is_published !== false)}
+                            title={p.is_published !== false ? "Hide Draft" : "Publish Live"}
+                          >
+                            {p.is_published !== false ? "Hide" : "Publish"}
+                          </button>
+                          <button
+                            type="button"
+                            className="button button-small"
+                            style={{ background: "#fee2e2", color: "#991b1b", border: "1px solid #fecaca", padding: "6px 9px" }}
+                            onClick={() => handleDeleteProduct(p.id, p.name)}
+                            title="Delete Piece"
+                          >
+                            🗑️
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

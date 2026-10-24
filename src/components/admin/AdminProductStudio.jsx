@@ -204,6 +204,8 @@ export default function AdminProductStudio({ products, onProductChanged, editing
   const handleDeleteProduct = async (productId, productName) => {
     if (!window.confirm(`Are you sure you want to delete "${productName}" from your store?`)) return;
     await deleteProduct(productId);
+    setRefreshToast(`✓ "${productName}" deleted`);
+    setTimeout(() => setRefreshToast(""), 3500);
     if (onProductChanged) onProductChanged();
   };
 

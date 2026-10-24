@@ -26,6 +26,21 @@ export function StoreProvider({ children }) {
   const [checkoutItem, setCheckoutItem] = useState(null);
 
   // Load products from API / Supabase / localStorage / productsSeed
+  const getDeletedIds = () => {
+    try {
+      return JSON.parse(localStorage.getItem("saloriya_deleted_product_ids") || "[]");
+    } catch (e) {
+      return [];
+    }
+  };
+
+  const filterOutDeleted = (list) => {
+    if (!Array.isArray(list)) return [];
+    const deleted = getDeletedIds();
+    if (deleted.length === 0) return list;
+    return list.filter((p) => !deleted.includes(p.id) && (!p.slug || !deleted.includes(p.slug)));
+  };
+
   const fetchProducts = async () => {
     let loaded = null;
 
@@ -76,12 +91,13 @@ export function StoreProvider({ children }) {
     }
 
     if (loaded && loaded.length > 0) {
-      setProducts(loaded);
+      const cleanList = filterOutDeleted(loaded);
+      setProducts(cleanList);
       try {
-        localStorage.setItem("saloriya_admin_products", JSON.stringify(loaded));
+        localStorage.setItem("saloriya_admin_products", JSON.stringify(cleanList));
       } catch (e) {}
     } else {
-      const initial = productsSeed.map((p) => normalizeProduct(p));
+      const initial = filterOutDeleted(productsSeed.map((p) => normalizeProduct(p)));
       setProducts(initial);
       try {
         localStorage.setItem("saloriya_admin_products", JSON.stringify(initial));
@@ -173,24 +189,38 @@ export function StoreProvider({ children }) {
 
   // Action: Delete Product
   const deleteProduct = async (productId) => {
-    setProducts((prev) => prev.filter((p) => p.id !== productId));
+    const target = products.find((p) => p.id === productId || p.slug === productId);
+    const slug = target?.slug;
+    const id = target?.id || productId;
 
-    // LocalStorage sync
+    // 1. Add to deleted IDs tracking
+    try {
+      const deleted = getDeletedIds();
+      if (!deleted.includes(id)) deleted.push(id);
+      if (slug && !deleted.includes(slug)) deleted.push(slug);
+      localStorage.setItem("saloriya_deleted_product_ids", JSON.stringify(deleted));
+    } catch (e) {}
+
+    // 2. Remove immediately from local state
+    setProducts((prev) => prev.filter((p) => p.id !== id && (!slug || p.slug !== slug)));
+
+    // 3. LocalStorage sync
     try {
       const local = JSON.parse(localStorage.getItem("saloriya_admin_products") || "[]");
-      const filtered = local.filter((p) => p.id !== productId);
+      const filtered = local.filter((p) => p.id !== id && (!slug || p.slug !== slug));
       localStorage.setItem("saloriya_admin_products", JSON.stringify(filtered));
     } catch (e) {}
 
-    // API sync
+    // 4. API sync
     try {
-      await fetch(`/api/products/${productId}`, { method: "DELETE" });
+      await fetch(`/api/products/${id}`, { method: "DELETE" });
     } catch (e) {}
 
-    // Supabase sync
+    // 5. Supabase sync
     if (isSupabaseConfigured) {
       try {
-        await supabase.from("products").delete().eq("id", productId);
+        await supabase.from("products").delete().eq("id", id);
+        if (slug) await supabase.from("products").delete().eq("slug", slug);
       } catch (e) {}
     }
   };
@@ -199,6 +229,12 @@ export function StoreProvider({ children }) {
   const saveProduct = async (productData) => {
     const id = productData.id || `prod_${Date.now()}`;
     const normalized = normalizeProduct({ ...productData, id });
+
+    // Untrack from deleted if re-created
+    try {
+      const deleted = getDeletedIds().filter((d) => d !== id && (!normalized.slug || d !== normalized.slug));
+      localStorage.setItem("saloriya_deleted_product_ids", JSON.stringify(deleted));
+    } catch (e) {}
 
     setProducts((prev) => {
       const idx = prev.findIndex((p) => p.id === id);

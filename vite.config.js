@@ -1,4 +1,5 @@
 import { defineConfig, loadEnv } from "vite";
+import react from "@vitejs/plugin-react";
 import { resolve } from "path";
 import sendOtpHandler from "./api/otp/send.js";
 import verifyOtpHandler from "./api/otp/verify.js";
@@ -53,15 +54,16 @@ export default defineConfig(({ mode }) => {
   Object.assign(process.env, env);
 
   return {
-    plugins: [vercelApiDevPlugin()],
+    plugins: [react(), vercelApiDevPlugin()],
+    server: {
+      port: 5173,
+    },
     build: {
       rollupOptions: {
         input: {
           main: resolve(__dirname, "index.html"),
-          admin: resolve(__dirname, "admin.html"),
         },
       },
     },
   };
 });
-

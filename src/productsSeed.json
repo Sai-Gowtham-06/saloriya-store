@@ -22,10 +22,10 @@
       "SKY BLUE",
       "RED"
     ],
-    "stock": 3,
+    "stock": 6,
     "is_published": true,
     "created_at": "2026-10-23T10:04:42.320745+00:00",
-    "updated_at": "2026-10-23T17:48:46.204+00:00"
+    "updated_at": "2026-10-24T07:01:48.393Z"
   },
   {
     "id": "a98b731a-154b-4dec-8b81-dd95b4141c11",
@@ -38,10 +38,10 @@
       "https://ybyboplrrovrhnnunkaa.supabase.co/storage/v1/object/public/product-images/8bc81f8a-0da5-4253-ad08-c28638af3721-Ornate-Ruby-and-Pearl-Jhumka-Earrings.png"
     ],
     "colours": [],
-    "stock": 15,
+    "stock": 14,
     "is_published": true,
     "created_at": "2026-10-23T10:35:50.732476+00:00",
-    "updated_at": "2026-10-23T12:05:52.847+00:00"
+    "updated_at": "2026-10-24T06:56:22.583Z"
   },
   {
     "id": "86132a0e-6532-46e8-8dd7-997a1b8c3940",
@@ -98,10 +98,10 @@
       "SKY BLUE",
       "RED"
     ],
-    "stock": 2,
+    "stock": 1,
     "is_published": true,
     "created_at": "2026-10-23T10:20:20.764931+00:00",
-    "updated_at": "2026-10-23T10:28:13.744+00:00"
+    "updated_at": "2026-10-24T06:56:54.846Z"
   },
   {
     "id": "84675dd2-70a1-47c5-966b-3f781ff0fbba",
@@ -140,10 +140,10 @@
       "GREEN",
       "MAROON"
     ],
-    "stock": 2,
+    "stock": 1,
     "is_published": true,
     "created_at": "2026-10-23T11:47:00.55747+00:00",
-    "updated_at": "2026-10-23T11:47:00.03+00:00"
+    "updated_at": "2026-10-24T07:17:25.492Z"
   },
   {
     "id": "74126991-7775-4b06-9a6f-9c09788dcfbd",
@@ -156,10 +156,10 @@
       "https://ybyboplrrovrhnnunkaa.supabase.co/storage/v1/object/public/product-images/0d6e2270-60e1-4aec-af1f-fe3954b235bd-Ornate-Ruby-and-Emerald-Jhumka-Earrings.png"
     ],
     "colours": [],
-    "stock": 3,
+    "stock": 1,
     "is_published": true,
     "created_at": "2026-10-23T11:55:09.774749+00:00",
-    "updated_at": "2026-10-23T16:27:18.712+00:00"
+    "updated_at": "2026-10-24T07:04:57.973Z"
   },
   {
     "id": "f6ebe650-629a-4a3f-bf6c-ff07e1c0a53a",
@@ -177,9 +177,9 @@
       "RED"
     ],
     "stock": 2,
-    "is_published": true,
+    "is_published": false,
     "created_at": "2026-10-23T12:04:17.271918+00:00",
-    "updated_at": "2026-10-23T19:46:56.202+00:00"
+    "updated_at": "2026-10-24T07:14:18.554Z"
   },
   {
     "id": "198bedc5-e92f-49f3-8181-9fbada07ad65",

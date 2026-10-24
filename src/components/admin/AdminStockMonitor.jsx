@@ -1,7 +1,11 @@
-import React from "react";
-import { supabase, isSupabaseConfigured } from "../../supabase.js";
+import React, { useState } from "react";
+import { useStore } from "../../context/StoreContext";
 
 export default function AdminStockMonitor({ products, onProductChanged, onEditInStudio }) {
+  const { updateProductStock, refreshCatalog } = useStore();
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshToast, setRefreshToast] = useState("");
+
   const formatMoney = (paise) => {
     return new Intl.NumberFormat("en-IN", {
       style: "currency",
@@ -12,22 +16,24 @@ export default function AdminStockMonitor({ products, onProductChanged, onEditIn
 
   const handleStockUpdate = async (productId, currentStock, delta) => {
     const newStock = Math.max(0, currentStock + delta);
-    try {
-      if (isSupabaseConfigured) {
-        await supabase.from("products").update({ stock: newStock }).eq("id", productId);
-      }
-    } catch (e) {}
+    await updateProductStock(productId, newStock);
+    if (onProductChanged) onProductChanged();
+  };
 
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    setRefreshToast("");
     try {
-      const local = JSON.parse(localStorage.getItem("saloriya_admin_products") || "[]");
-      const idx = local.findIndex((p) => p.id === productId);
-      if (idx !== -1) {
-        local[idx].stock = newStock;
-        localStorage.setItem("saloriya_admin_products", JSON.stringify(local));
-      }
-    } catch (e) {}
-
-    onProductChanged();
+      await refreshCatalog();
+      setRefreshToast("✓ Stock updated");
+      setTimeout(() => setRefreshToast(""), 3000);
+    } catch (e) {
+      setRefreshToast("Stock updated");
+      setTimeout(() => setRefreshToast(""), 2000);
+    } finally {
+      setRefreshing(false);
+      if (onProductChanged) onProductChanged();
+    }
   };
 
   return (
@@ -40,9 +46,25 @@ export default function AdminStockMonitor({ products, onProductChanged, onEditIn
               Real-time stock monitor. When orders are placed and confirmed, stock decreases automatically here.
             </p>
           </div>
-          <button className="button button-outline" type="button" onClick={onProductChanged}>
-            ↻ Refresh Stock
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <button
+              className="button button-outline"
+              type="button"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+            >
+              <span style={{ display: "inline-block", transform: refreshing ? "rotate(180deg)" : "none", transition: "transform 0.5s ease" }}>
+                ↻
+              </span>
+              <span>{refreshing ? "Refreshing…" : "Refresh Stock"}</span>
+            </button>
+            {refreshToast && (
+              <span style={{ fontSize: "11px", color: "#15803d", fontWeight: 700 }}>
+                {refreshToast}
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="stock-table-wrap">
@@ -54,7 +76,7 @@ export default function AdminStockMonitor({ products, onProductChanged, onEditIn
             <table className="stock-table">
               <thead>
                 <tr>
-                  <th>Jewellery Piece</th>
+                  <th style={{ minWidth: "260px" }}>Jewellery Piece</th>
                   <th>Category</th>
                   <th>Price</th>
                   <th>Colours</th>
@@ -76,29 +98,61 @@ export default function AdminStockMonitor({ products, onProductChanged, onEditIn
                   return (
                     <tr key={p.id} data-product-row={p.id}>
                       <td>
-                        <div className="stock-item-cell">
+                        <div className="stock-item-cell" style={{ display: "flex", alignItems: "center", gap: "14px", padding: "6px 0" }}>
                           {thumb ? (
-                            <img src={thumb} alt="" className="stock-table-thumb" />
+                            <img
+                              src={thumb}
+                              alt={p.name}
+                              className="stock-table-thumb"
+                              style={{
+                                width: "88px",
+                                height: "88px",
+                                borderRadius: "8px",
+                                objectFit: "cover",
+                                border: "1.5px solid var(--gold-border)",
+                                boxShadow: "0 3px 10px rgba(134,30,56,0.08)",
+                                flexShrink: 0
+                              }}
+                            />
                           ) : (
                             <div
                               className="stock-table-thumb"
-                              style={{ display: "grid", placeItems: "center", color: "var(--wine)", fontFamily: "serif", fontSize: "18px" }}
+                              style={{
+                                width: "88px",
+                                height: "88px",
+                                borderRadius: "8px",
+                                display: "grid",
+                                placeItems: "center",
+                                color: "var(--wine)",
+                                fontFamily: "serif",
+                                fontSize: "28px",
+                                background: "#faf4f0",
+                                border: "1.5px solid var(--gold-border)",
+                                flexShrink: 0
+                              }}
                             >
                               S
                             </div>
                           )}
                           <div>
-                            <strong>{p.name}</strong>
-                            <div style={{ fontSize: "10px", color: "var(--muted)" }}>/{p.slug}</div>
+                            <strong style={{ fontSize: "14.5px", color: "var(--ink)", display: "block", marginBottom: "4px" }}>
+                              {p.name}
+                            </strong>
+                            <div style={{ fontSize: "11px", color: "var(--muted)" }}>/{p.slug}</div>
+                            {p.is_published === false && (
+                              <span style={{ fontSize: "10px", color: "#dc2626", fontWeight: 700, marginTop: "2px", display: "inline-block" }}>
+                                ○ Unpublished Draft
+                              </span>
+                            )}
                           </div>
                         </div>
                       </td>
                       <td>{p.category}</td>
                       <td>
-                        <strong>{formatMoney(p.price_paise)}</strong>
+                        <strong style={{ color: "var(--wine)" }}>{formatMoney(p.price_paise)}</strong>
                       </td>
                       <td>
-                        <span style={{ fontSize: "11px" }}>
+                        <span style={{ fontSize: "12px", color: "var(--ink)" }}>
                           {Array.isArray(p.colours) && p.colours.length > 0 ? p.colours.join(", ") : "Single Look"}
                         </span>
                       </td>
@@ -108,8 +162,8 @@ export default function AdminStockMonitor({ products, onProductChanged, onEditIn
                       <td>
                         <span
                           style={{
-                            fontSize: "11px",
-                            fontWeight: 600,
+                            fontSize: "11.5px",
+                            fontWeight: 700,
                             color: p.stock <= 0 ? "#dc2626" : p.stock <= 3 ? "#d97706" : "#16a34a"
                           }}
                         >
@@ -117,21 +171,23 @@ export default function AdminStockMonitor({ products, onProductChanged, onEditIn
                         </span>
                       </td>
                       <td>
-                        <div style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "#fcf8f5", padding: "4px 8px", borderRadius: "6px", border: "1px solid var(--line)" }}>
                           <button
                             type="button"
                             className="button button-outline button-small"
-                            style={{ padding: "2px 8px", minHeight: "26px" }}
+                            style={{ padding: "2px 10px", minHeight: "28px", fontSize: "14px", fontWeight: "bold" }}
                             onClick={() => handleStockUpdate(p.id, p.stock || 0, -1)}
+                            title="Decrease Stock"
                           >
                             −
                           </button>
-                          <strong style={{ minWidth: "24px", textAlign: "center" }}>{p.stock || 0}</strong>
+                          <strong style={{ minWidth: "26px", textAlign: "center", fontSize: "13px" }}>{p.stock || 0}</strong>
                           <button
                             type="button"
                             className="button button-outline button-small"
-                            style={{ padding: "2px 8px", minHeight: "26px" }}
+                            style={{ padding: "2px 10px", minHeight: "28px", fontSize: "14px", fontWeight: "bold" }}
                             onClick={() => handleStockUpdate(p.id, p.stock || 0, 1)}
+                            title="Increase Stock"
                           >
                             +
                           </button>

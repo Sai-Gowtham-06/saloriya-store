@@ -2,14 +2,16 @@ import React, { useState, useEffect } from "react";
 import { supabase, isSupabaseConfigured } from "../../supabase.js";
 
 const DEFAULT_PROMOS = [
-  { code: "FREEDELIVERY", discount_type: "free_delivery", description: "Complimentary Free Transport & Packaging (Waives ₹50 delivery)", is_active: true },
-  { code: "FREESHIP", discount_type: "free_delivery", description: "Free Courier & Delivery on Orders", is_active: true },
-  { code: "GOLD2026", discount_type: "free_delivery", description: "Special Festival Free Delivery Voucher", is_active: true }
+  { code: "FREEDELIVERY", discount_type: "free_delivery", amount: 50, description: "Complimentary Free Transport & Packaging (Waives ₹50 delivery)", is_active: true },
+  { code: "SALORIYA50", discount_type: "fixed_amount", amount: 50, description: "Flat ₹50.00 OFF Instant Discount", is_active: true },
+  { code: "GOLD2026", discount_type: "free_delivery", amount: 50, description: "Special Festival Free Delivery Voucher", is_active: true }
 ];
 
 export default function AdminPromoManager({ onPromosUpdated }) {
   const [promos, setPromos] = useState([]);
   const [newCode, setNewCode] = useState("");
+  const [discountType, setDiscountType] = useState("fixed_amount"); // 'fixed_amount' | 'free_delivery' | 'percentage'
+  const [amount, setAmount] = useState("50");
   const [newDesc, setNewDesc] = useState("");
   const [msg, setMsg] = useState("");
 
@@ -49,11 +51,20 @@ export default function AdminPromoManager({ onPromosUpdated }) {
     const code = newCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
     if (!code) return;
 
+    const numAmount = discountType === "free_delivery" ? 50 : Math.max(1, parseFloat(amount) || 0);
+
     setMsg("");
     const newPromo = {
       code,
-      discount_type: "free_delivery",
-      description: newDesc.trim() || "Free Transport & Packaging (Waives ₹50 fee)",
+      discount_type: discountType,
+      amount: numAmount,
+      description: newDesc.trim() || (
+        discountType === "free_delivery"
+          ? "Complimentary Free Delivery (Waives ₹50 fee)"
+          : discountType === "fixed_amount"
+          ? `Flat ₹${numAmount} Discount on Order`
+          : `${numAmount}% Off Entire Order`
+      ),
       is_active: true,
       created_at: new Date().toISOString()
     };
@@ -68,6 +79,7 @@ export default function AdminPromoManager({ onPromosUpdated }) {
     localStorage.setItem("saloriya_admin_promo_codes", JSON.stringify(updated));
     setPromos(updated);
     setNewCode("");
+    setAmount("50");
     setNewDesc("");
     setMsg(`✓ Promo code "${code}" added successfully.`);
     if (onPromosUpdated) onPromosUpdated(updated.length);
@@ -172,10 +184,12 @@ export default function AdminPromoManager({ onPromosUpdated }) {
             </label>
 
             <label style={{ fontSize: "12px", fontWeight: 600, display: "flex", flexDirection: "column", gap: "6px" }}>
-              Benefit Type *
+              Discount Type *
               <select
                 name="discountType"
                 id="promo-type-select"
+                value={discountType}
+                onChange={(e) => setDiscountType(e.target.value)}
                 style={{
                   padding: "10px",
                   border: "1.5px solid #d1b490",
@@ -184,9 +198,32 @@ export default function AdminPromoManager({ onPromosUpdated }) {
                   background: "#fff"
                 }}
               >
-                <option value="free_delivery">Free Delivery (₹50.00 OFF Courier Fee)</option>
+                <option value="fixed_amount">Fixed Amount Discount (₹ OFF)</option>
+                <option value="free_delivery">Free Delivery (Waives ₹50 Courier Fee)</option>
+                <option value="percentage">Percentage Discount (% OFF)</option>
               </select>
             </label>
+
+            {discountType !== "free_delivery" && (
+              <label style={{ fontSize: "12px", fontWeight: 600, display: "flex", flexDirection: "column", gap: "6px" }}>
+                {discountType === "fixed_amount" ? "Discount Amount (₹) *" : "Discount Percentage (%) *"}
+                <input
+                  type="number"
+                  min="1"
+                  max={discountType === "percentage" ? "100" : "10000"}
+                  required
+                  placeholder={discountType === "fixed_amount" ? "e.g. 50, 100, 200" : "e.g. 10, 20"}
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  style={{
+                    padding: "10px",
+                    border: "1.5px solid #d1b490",
+                    borderRadius: "6px",
+                    fontSize: "13px"
+                  }}
+                />
+              </label>
+            )}
 
             <label style={{ fontSize: "12px", fontWeight: 600, display: "flex", flexDirection: "column", gap: "6px" }}>
               Voucher Note / Description
@@ -194,7 +231,13 @@ export default function AdminPromoManager({ onPromosUpdated }) {
                 type="text"
                 name="description"
                 id="promo-desc-input"
-                placeholder="e.g. Festival Free Courier Offer"
+                placeholder={
+                  discountType === "free_delivery"
+                    ? "e.g. Free Delivery on Orders"
+                    : discountType === "fixed_amount"
+                    ? `e.g. Special ₹${amount || 50} Off Voucher`
+                    : `e.g. Special ${amount || 10}% Off Voucher`
+                }
                 value={newDesc}
                 onChange={(e) => setNewDesc(e.target.value)}
                 style={{
@@ -270,7 +313,19 @@ export default function AdminPromoManager({ onPromosUpdated }) {
                         </span>
                       </td>
                       <td style={{ padding: "12px 16px" }}>
-                        <span style={{ color: "#15803d", fontWeight: 600 }}>Free Courier (₹50 OFF)</span>
+                        {p.discount_type === "fixed_amount" ? (
+                          <span style={{ color: "#15803d", fontWeight: 700, background: "#dcfce7", padding: "3px 8px", borderRadius: "4px", fontSize: "12px" }}>
+                            ₹{p.amount || 50}.00 OFF
+                          </span>
+                        ) : p.discount_type === "percentage" ? (
+                          <span style={{ color: "#7c2d12", fontWeight: 700, background: "#ffedd5", padding: "3px 8px", borderRadius: "4px", fontSize: "12px" }}>
+                            {p.amount || 10}% OFF
+                          </span>
+                        ) : (
+                          <span style={{ color: "#166534", fontWeight: 700, background: "#dcfce7", padding: "3px 8px", borderRadius: "4px", fontSize: "12px" }}>
+                            FREE DELIVERY (₹50 OFF)
+                          </span>
+                        )}
                       </td>
                       <td style={{ padding: "12px 16px", color: "var(--muted)" }}>{p.description}</td>
                       <td style={{ padding: "12px 16px", textAlign: "right" }}>

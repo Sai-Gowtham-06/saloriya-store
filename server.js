@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import sendOtpHandler from "./api/otp/send.js";
@@ -39,23 +40,102 @@ app.get("/api/health", (req, res) => {
   });
 });
 
-// OTP API Endpoints
-app.post("/api/otp/send", async (req, res) => {
+// Product Management API Endpoints
+const productsFilePath = path.resolve(__dirname, "src", "productsSeed.json");
+
+function readProductsFromFile() {
   try {
-    await sendOtpHandler(req, res);
+    if (fs.existsSync(productsFilePath)) {
+      const content = fs.readFileSync(productsFilePath, "utf8");
+      return JSON.parse(content);
+    }
   } catch (err) {
-    console.error("Express /api/otp/send error:", err);
-    res.status(500).json({ success: false, error: "Internal server error" });
+    console.error("Failed to read products file:", err);
   }
+  return [];
+}
+
+function writeProductsToFile(products) {
+  try {
+    fs.writeFileSync(productsFilePath, JSON.stringify(products, null, 2), "utf8");
+    return true;
+  } catch (err) {
+    console.error("Failed to write products file:", err);
+    return false;
+  }
+}
+
+app.get("/api/products", (req, res) => {
+  const products = readProductsFromFile();
+  res.json({ success: true, products });
 });
 
-app.post("/api/otp/verify", async (req, res) => {
-  try {
-    await verifyOtpHandler(req, res);
-  } catch (err) {
-    console.error("Express /api/otp/verify error:", err);
-    res.status(500).json({ success: false, error: "Internal server error" });
+app.put("/api/products/:id/stock", (req, res) => {
+  const { id } = req.params;
+  const { stock } = req.body;
+  const products = readProductsFromFile();
+  const idx = products.findIndex((p) => p.id === id);
+
+  if (idx === -1) {
+    return res.status(404).json({ success: false, error: "Product not found" });
   }
+
+  products[idx].stock = Math.max(0, parseInt(stock, 10) || 0);
+  products[idx].updated_at = new Date().toISOString();
+  writeProductsToFile(products);
+
+  res.json({ success: true, product: products[idx] });
+});
+
+app.put("/api/products/:id/publish", (req, res) => {
+  const { id } = req.params;
+  const { is_published } = req.body;
+  const products = readProductsFromFile();
+  const idx = products.findIndex((p) => p.id === id);
+
+  if (idx === -1) {
+    return res.status(404).json({ success: false, error: "Product not found" });
+  }
+
+  products[idx].is_published = Boolean(is_published);
+  products[idx].updated_at = new Date().toISOString();
+  writeProductsToFile(products);
+
+  res.json({ success: true, product: products[idx] });
+});
+
+app.delete("/api/products/:id", (req, res) => {
+  const { id } = req.params;
+  let products = readProductsFromFile();
+  const initialLength = products.length;
+  products = products.filter((p) => p.id !== id);
+
+  if (products.length === initialLength) {
+    return res.status(404).json({ success: false, error: "Product not found" });
+  }
+
+  writeProductsToFile(products);
+  res.json({ success: true, message: "Product deleted" });
+});
+
+app.post("/api/products", (req, res) => {
+  const productData = req.body;
+  let products = readProductsFromFile();
+
+  if (productData.id) {
+    const idx = products.findIndex((p) => p.id === productData.id);
+    if (idx !== -1) {
+      products[idx] = { ...products[idx], ...productData, updated_at: new Date().toISOString() };
+    } else {
+      products.unshift({ ...productData, created_at: new Date().toISOString() });
+    }
+  } else {
+    const newId = `prod_${Date.now()}`;
+    products.unshift({ id: newId, ...productData, created_at: new Date().toISOString() });
+  }
+
+  writeProductsToFile(products);
+  res.json({ success: true, products });
 });
 
 // Serve frontend in production build

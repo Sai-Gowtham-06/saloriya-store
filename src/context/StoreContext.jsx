@@ -67,11 +67,26 @@ export function StoreProvider({ children }) {
   const [previewProductId, setPreviewProductId] = useState(null);
   const [checkoutItem, setCheckoutItem] = useState(null);
 
-  // Load products from Supabase + fallback to productsSeed
+  // Load products from API / Supabase / localStorage / productsSeed
   const fetchProducts = async () => {
     let loaded = null;
 
-    if (isSupabaseConfigured) {
+    // 1. Try local Express / Vite dev API first
+    try {
+      const res = await fetch("/api/products");
+      if (res.ok) {
+        const d = await res.json();
+        if (d.success && Array.isArray(d.products) && d.products.length > 0) {
+          loaded = d.products.map((p) => {
+            const seed = productsSeed.find((s) => s.id === p.id || s.slug === p.slug);
+            return normalizeProduct(p, seed);
+          });
+        }
+      }
+    } catch (err) {}
+
+    // 2. Try Supabase
+    if ((!loaded || loaded.length === 0) && isSupabaseConfigured) {
       try {
         const { data, error } = await supabase
           .from("products")
@@ -89,6 +104,7 @@ export function StoreProvider({ children }) {
       }
     }
 
+    // 3. Try LocalStorage
     if (!loaded || loaded.length === 0) {
       try {
         const local = JSON.parse(localStorage.getItem("saloriya_admin_products") || "[]");
@@ -103,14 +119,181 @@ export function StoreProvider({ children }) {
 
     if (loaded && loaded.length > 0) {
       setProducts(loaded);
+      try {
+        localStorage.setItem("saloriya_admin_products", JSON.stringify(loaded));
+      } catch (e) {}
     } else {
-      setProducts(productsSeed.map((p) => normalizeProduct(p)));
+      const initial = productsSeed.map((p) => normalizeProduct(p));
+      setProducts(initial);
+      try {
+        localStorage.setItem("saloriya_admin_products", JSON.stringify(initial));
+      } catch (e) {}
     }
   };
 
   useEffect(() => {
     fetchProducts();
   }, []);
+
+  // Action: Update Stock
+  const updateProductStock = async (productId, newStock) => {
+    const cleanStock = Math.max(0, parseInt(newStock, 10) || 0);
+    // 1. Immediate UI update
+    setProducts((prev) =>
+      prev.map((p) => (p.id === productId ? { ...p, stock: cleanStock, updated_at: new Date().toISOString() } : p))
+    );
+
+    // 2. LocalStorage sync
+    try {
+      const local = JSON.parse(localStorage.getItem("saloriya_admin_products") || "[]");
+      const idx = local.findIndex((p) => p.id === productId);
+      if (idx !== -1) {
+        local[idx].stock = cleanStock;
+      } else {
+        const currentProd = products.find((p) => p.id === productId);
+        if (currentProd) local.push({ ...currentProd, stock: cleanStock });
+      }
+      localStorage.setItem("saloriya_admin_products", JSON.stringify(local));
+    } catch (e) {}
+
+    // 3. API sync
+    try {
+      await fetch(`/api/products/${productId}/stock`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stock: cleanStock })
+      });
+    } catch (e) {}
+
+    // 4. Supabase sync
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from("products").update({ stock: cleanStock }).eq("id", productId);
+      } catch (e) {}
+    }
+  };
+
+  // Action: Toggle Publish
+  const toggleProductPublish = async (productId) => {
+    let nextPublish = false;
+    setProducts((prev) =>
+      prev.map((p) => {
+        if (p.id === productId) {
+          nextPublish = !p.is_published;
+          return { ...p, is_published: nextPublish, updated_at: new Date().toISOString() };
+        }
+        return p;
+      })
+    );
+
+    // LocalStorage sync
+    try {
+      const local = JSON.parse(localStorage.getItem("saloriya_admin_products") || "[]");
+      const idx = local.findIndex((p) => p.id === productId);
+      if (idx !== -1) {
+        local[idx].is_published = nextPublish;
+        localStorage.setItem("saloriya_admin_products", JSON.stringify(local));
+      }
+    } catch (e) {}
+
+    // API sync
+    try {
+      await fetch(`/api/products/${productId}/publish`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ is_published: nextPublish })
+      });
+    } catch (e) {}
+
+    // Supabase sync
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from("products").update({ is_published: nextPublish }).eq("id", productId);
+      } catch (e) {}
+    }
+  };
+
+  // Action: Delete Product
+  const deleteProduct = async (productId) => {
+    setProducts((prev) => prev.filter((p) => p.id !== productId));
+
+    // LocalStorage sync
+    try {
+      const local = JSON.parse(localStorage.getItem("saloriya_admin_products") || "[]");
+      const filtered = local.filter((p) => p.id !== productId);
+      localStorage.setItem("saloriya_admin_products", JSON.stringify(filtered));
+    } catch (e) {}
+
+    // API sync
+    try {
+      await fetch(`/api/products/${productId}`, { method: "DELETE" });
+    } catch (e) {}
+
+    // Supabase sync
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from("products").delete().eq("id", productId);
+      } catch (e) {}
+    }
+  };
+
+  // Action: Save / Create Product
+  const saveProduct = async (productData) => {
+    const id = productData.id || `prod_${Date.now()}`;
+    const normalized = normalizeProduct({ ...productData, id });
+
+    setProducts((prev) => {
+      const idx = prev.findIndex((p) => p.id === id);
+      if (idx !== -1) {
+        const next = [...prev];
+        next[idx] = normalized;
+        return next;
+      }
+      return [normalized, ...prev];
+    });
+
+    // LocalStorage sync
+    try {
+      const local = JSON.parse(localStorage.getItem("saloriya_admin_products") || "[]");
+      const idx = local.findIndex((p) => p.id === id);
+      if (idx !== -1) {
+        local[idx] = normalized;
+      } else {
+        local.unshift(normalized);
+      }
+      localStorage.setItem("saloriya_admin_products", JSON.stringify(local));
+    } catch (e) {}
+
+    // API sync
+    try {
+      await fetch("/api/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(normalized)
+      });
+    } catch (e) {}
+
+    // Supabase sync
+    if (isSupabaseConfigured) {
+      try {
+        if (productData.id) {
+          await supabase.from("products").update(normalized).eq("id", id);
+        } else {
+          await supabase.from("products").insert([normalized]);
+        }
+      } catch (e) {}
+    }
+
+    return normalized;
+  };
+
+  // Action: Refresh Catalog
+  const refreshCatalog = async () => {
+    setLoading(true);
+    await fetchProducts();
+    setLoading(false);
+    return products.length;
+  };
 
   // Format currency helper
   const formatMoney = (paise) => {
@@ -213,7 +396,12 @@ export function StoreProvider({ children }) {
     closePreview,
     checkoutItem,
     openCheckout,
-    closeCheckout
+    closeCheckout,
+    updateProductStock,
+    toggleProductPublish,
+    deleteProduct,
+    saveProduct,
+    refreshCatalog
   };
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;

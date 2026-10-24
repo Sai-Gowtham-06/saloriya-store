@@ -1,7 +1,16 @@
 import React, { useState, useMemo } from "react";
+import { useStore } from "../../context/StoreContext";
 import { supabase, isSupabaseConfigured } from "../../supabase.js";
 
 export default function AdminProductStudio({ products, onProductChanged, editingProduct, setEditingProduct }) {
+  const {
+    updateProductStock,
+    toggleProductPublish,
+    deleteProduct,
+    saveProduct,
+    refreshCatalog
+  } = useStore();
+
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -9,6 +18,8 @@ export default function AdminProductStudio({ products, onProductChanged, editing
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [variantFilter, setVariantFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("newest");
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshToast, setRefreshToast] = useState("");
 
   // Form Fields
   const [formData, setFormData] = useState({
@@ -162,100 +173,56 @@ export default function AdminProductStudio({ products, onProductChanged, editing
       updated_at: new Date().toISOString()
     };
 
+    // Save product to StoreContext & backend
     try {
-      if (isSupabaseConfigured) {
-        if (formData.id) {
-          await supabase.from("products").update(payload).eq("id", formData.id);
-        } else {
-          await supabase.from("products").insert([{ ...payload, created_at: new Date().toISOString() }]);
-        }
-      }
-    } catch (err) {
-      console.warn("Supabase product save:", err);
+      await saveProduct(payload);
+    } catch (e) {
+      console.error("Save product error:", e);
     }
-
-    try {
-      const local = JSON.parse(localStorage.getItem("saloriya_admin_products") || "[]");
-      if (formData.id) {
-        const idx = local.findIndex((p) => p.id === formData.id);
-        if (idx !== -1) {
-          local[idx] = { ...local[idx], ...payload };
-        } else {
-          local.unshift({ id: formData.id, ...payload });
-        }
-      } else {
-        local.unshift({ id: `prod_${Date.now()}`, ...payload, created_at: new Date().toISOString() });
-      }
-      localStorage.setItem("saloriya_admin_products", JSON.stringify(local));
-    } catch (e) {}
 
     setSaving(false);
     setFormMsg("✓ Piece successfully saved and updated in catalogue!");
     setTimeout(() => {
       handleCloseForm();
-      onProductChanged();
+      if (onProductChanged) onProductChanged();
     }, 600);
   };
 
   // Quick Stock Step
   const handleStockDelta = async (productId, currentStock, delta) => {
     const newStock = Math.max(0, currentStock + delta);
-    try {
-      if (isSupabaseConfigured) {
-        await supabase.from("products").update({ stock: newStock }).eq("id", productId);
-      }
-    } catch (e) {}
-
-    try {
-      const local = JSON.parse(localStorage.getItem("saloriya_admin_products") || "[]");
-      const idx = local.findIndex((p) => p.id === productId);
-      if (idx !== -1) {
-        local[idx].stock = newStock;
-        localStorage.setItem("saloriya_admin_products", JSON.stringify(local));
-      }
-    } catch (e) {}
-
-    onProductChanged();
+    await updateProductStock(productId, newStock);
+    if (onProductChanged) onProductChanged();
   };
 
   // Toggle publish
   const handleTogglePublish = async (productId, currentPublish) => {
-    const newPublish = !currentPublish;
-    try {
-      if (isSupabaseConfigured) {
-        await supabase.from("products").update({ is_published: newPublish }).eq("id", productId);
-      }
-    } catch (e) {}
-
-    try {
-      const local = JSON.parse(localStorage.getItem("saloriya_admin_products") || "[]");
-      const idx = local.findIndex((p) => p.id === productId);
-      if (idx !== -1) {
-        local[idx].is_published = newPublish;
-        localStorage.setItem("saloriya_admin_products", JSON.stringify(local));
-      }
-    } catch (e) {}
-
-    onProductChanged();
+    await toggleProductPublish(productId);
+    if (onProductChanged) onProductChanged();
   };
 
   // Delete product
   const handleDeleteProduct = async (productId, productName) => {
     if (!window.confirm(`Are you sure you want to delete "${productName}" from your store?`)) return;
+    await deleteProduct(productId);
+    if (onProductChanged) onProductChanged();
+  };
 
+  // Refresh Catalogue
+  const handleRefreshClick = async () => {
+    setRefreshing(true);
+    setRefreshToast("");
     try {
-      if (isSupabaseConfigured) {
-        await supabase.from("products").delete().eq("id", productId);
-      }
-    } catch (e) {}
-
-    try {
-      const local = JSON.parse(localStorage.getItem("saloriya_admin_products") || "[]");
-      const filtered = local.filter((p) => p.id !== productId);
-      localStorage.setItem("saloriya_admin_products", JSON.stringify(filtered));
-    } catch (e) {}
-
-    onProductChanged();
+      const count = await refreshCatalog();
+      setRefreshToast(`✓ Catalogue refreshed (${count} pieces active)`);
+      setTimeout(() => setRefreshToast(""), 3500);
+    } catch (e) {
+      setRefreshToast("Catalogue refreshed.");
+      setTimeout(() => setRefreshToast(""), 2000);
+    } finally {
+      setRefreshing(false);
+      if (onProductChanged) onProductChanged();
+    }
   };
 
   // Filtered & Sorted Pieces
@@ -316,9 +283,23 @@ export default function AdminProductStudio({ products, onProductChanged, editing
             <span className="btn-icon">✨</span>
             <span>{isFormOpen ? "✕ Close Editor" : "+ Add New Piece"}</span>
           </button>
-          <button type="button" className="button button-outline button-small" onClick={onProductChanged}>
-            ↻ Refresh
+          <button
+            type="button"
+            className="button button-outline button-small"
+            onClick={handleRefreshClick}
+            disabled={refreshing}
+            style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+          >
+            <span style={{ display: "inline-block", transform: refreshing ? "rotate(180deg)" : "none", transition: "transform 0.5s ease" }}>
+              ↻
+            </span>
+            <span>{refreshing ? "Refreshing…" : "Refresh"}</span>
           </button>
+          {refreshToast && (
+            <span style={{ fontSize: "11px", color: "#15803d", fontWeight: 700, marginLeft: "8px" }}>
+              {refreshToast}
+            </span>
+          )}
         </div>
       </div>
 

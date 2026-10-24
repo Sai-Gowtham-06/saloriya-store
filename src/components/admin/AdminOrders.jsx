@@ -1,7 +1,8 @@
 import React, { useState } from "react";
+import { getColourImage } from "../../context/StoreContext";
 import { supabase, isSupabaseConfigured } from "../../supabase.js";
 
-export default function AdminOrders({ orders, onOrderUpdated, onOpenRecordOrder }) {
+export default function AdminOrders({ orders, products = [], onOrderUpdated, onOpenRecordOrder }) {
   const [paymentFilter, setPaymentFilter] = useState("all"); // 'all' | 'prepaid' | 'cod'
   const [statusFilter, setStatusFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -256,28 +257,74 @@ export default function AdminOrders({ orders, onOrderUpdated, onOpenRecordOrder 
                     </div>
                   </div>
 
-                  {/* Order Items Column */}
+                  {/* Order Items Column with Preview Image */}
                   <div className="order-items-col">
                     <span className="order-section-subtitle">Ordered Pieces</span>
-                    <div style={{ background: "#fcf8f5", border: "1px solid var(--line-subtle)", borderRadius: "8px", padding: "10px 14px" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                        <div>
-                          <strong style={{ fontSize: "14px", color: "var(--ink)" }}>{order.product_name}</strong>
-                          <div style={{ fontSize: "12px", color: "var(--muted)", marginTop: "2px" }}>
-                            Colour: <strong>{order.variant_colour || "Standard"}</strong> · Qty: <strong>{order.quantity || 1} pc</strong>
-                          </div>
-                        </div>
-                        <strong style={{ fontSize: "16px", color: "var(--wine)" }}>
-                          {formatMoney(order.total_paise)}
-                        </strong>
-                      </div>
+                    {(() => {
+                      const matchedProduct = products?.find(
+                        (p) => p.id === order.product_id || (p.name && order.product_name && p.name.trim().toLowerCase() === order.product_name.trim().toLowerCase())
+                      );
+                      const orderImg = order.product_image || (matchedProduct ? (getColourImage(matchedProduct, order.variant_colour, 0) || matchedProduct.image_urls?.[0] || matchedProduct.images?.[0]) : "");
 
-                      {order.utr_number && (
-                        <div style={{ fontSize: "11px", color: "#6b21a8", marginTop: "6px", fontWeight: 600 }}>
-                          UPI Ref / UTR: {order.utr_number}
+                      return (
+                        <div style={{ background: "#fcf8f5", border: "1px solid var(--line-subtle)", borderRadius: "8px", padding: "10px 14px" }}>
+                          <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+                            {orderImg ? (
+                              <img
+                                src={orderImg}
+                                alt={order.product_name}
+                                style={{
+                                  width: "64px",
+                                  height: "64px",
+                                  borderRadius: "8px",
+                                  objectFit: "cover",
+                                  border: "1.5px solid var(--gold-border)",
+                                  boxShadow: "0 2px 8px rgba(134,30,56,0.08)",
+                                  flexShrink: 0
+                                }}
+                              />
+                            ) : (
+                              <div
+                                style={{
+                                  width: "64px",
+                                  height: "64px",
+                                  borderRadius: "8px",
+                                  display: "grid",
+                                  placeItems: "center",
+                                  background: "#faf4f0",
+                                  border: "1.5px solid var(--gold-border)",
+                                  color: "var(--wine)",
+                                  fontFamily: "serif",
+                                  fontSize: "20px",
+                                  flexShrink: 0
+                                }}
+                              >
+                                S
+                              </div>
+                            )}
+
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <strong style={{ fontSize: "14px", color: "var(--ink)", display: "block" }}>
+                                {order.product_name}
+                              </strong>
+                              <div style={{ fontSize: "12px", color: "var(--muted)", marginTop: "2px" }}>
+                                Colour: <strong>{order.variant_colour || "Standard"}</strong> · Qty: <strong>{order.quantity || 1} pc</strong>
+                              </div>
+                            </div>
+
+                            <strong style={{ fontSize: "16px", color: "var(--wine)", flexShrink: 0 }}>
+                              {formatMoney(order.total_paise)}
+                            </strong>
+                          </div>
+
+                          {order.utr_number && (
+                            <div style={{ fontSize: "11px", color: "#6b21a8", marginTop: "8px", fontWeight: 600 }}>
+                              UPI Ref / UTR: {order.utr_number}
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
+                      );
+                    })()}
                   </div>
                 </div>
 

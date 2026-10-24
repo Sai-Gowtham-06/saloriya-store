@@ -150,6 +150,7 @@ export default function AdminPage() {
               <AdminMetrics orders={orders} />
               <AdminOrders
                 orders={orders}
+                products={products}
                 onOrderUpdated={loadOrders}
                 onOpenRecordOrder={() => setShowRecordModal(true)}
               />

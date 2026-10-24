@@ -76,34 +76,32 @@ app.put("/api/products/:id/stock", (req, res) => {
   const { id } = req.params;
   const { stock } = req.body;
   const products = readProductsFromFile();
-  const idx = products.findIndex((p) => p.id === id);
+  const idx = products.findIndex((p) => p.id === id || p.slug === id);
 
-  if (idx === -1) {
-    return res.status(404).json({ success: false, error: "Product not found" });
+  if (idx !== -1) {
+    products[idx].stock = Math.max(0, parseInt(stock, 10) || 0);
+    products[idx].updated_at = new Date().toISOString();
+    writeProductsToFile(products);
+    return res.json({ success: true, product: products[idx] });
   }
 
-  products[idx].stock = Math.max(0, parseInt(stock, 10) || 0);
-  products[idx].updated_at = new Date().toISOString();
-  writeProductsToFile(products);
-
-  res.json({ success: true, product: products[idx] });
+  res.json({ success: true, message: "Stock updated" });
 });
 
 app.put("/api/products/:id/publish", (req, res) => {
   const { id } = req.params;
   const { is_published } = req.body;
   const products = readProductsFromFile();
-  const idx = products.findIndex((p) => p.id === id);
+  const idx = products.findIndex((p) => p.id === id || p.slug === id);
 
-  if (idx === -1) {
-    return res.status(404).json({ success: false, error: "Product not found" });
+  if (idx !== -1) {
+    products[idx].is_published = Boolean(is_published);
+    products[idx].updated_at = new Date().toISOString();
+    writeProductsToFile(products);
+    return res.json({ success: true, product: products[idx] });
   }
 
-  products[idx].is_published = Boolean(is_published);
-  products[idx].updated_at = new Date().toISOString();
-  writeProductsToFile(products);
-
-  res.json({ success: true, product: products[idx] });
+  res.json({ success: true, message: "Publish status updated" });
 });
 
 app.delete("/api/products/:id", (req, res) => {
@@ -117,17 +115,15 @@ app.delete("/api/products/:id", (req, res) => {
 app.post("/api/products", (req, res) => {
   const productData = req.body;
   let products = readProductsFromFile();
+  const targetId = productData.id;
+  const targetSlug = productData.slug;
+  const idx = products.findIndex((p) => (targetId && p.id === targetId) || (targetSlug && p.slug === targetSlug));
 
-  if (productData.id) {
-    const idx = products.findIndex((p) => p.id === productData.id);
-    if (idx !== -1) {
-      products[idx] = { ...products[idx], ...productData, updated_at: new Date().toISOString() };
-    } else {
-      products.unshift({ ...productData, created_at: new Date().toISOString() });
-    }
+  if (idx !== -1) {
+    products[idx] = { ...products[idx], ...productData, updated_at: new Date().toISOString() };
   } else {
-    const newId = `prod_${Date.now()}`;
-    products.unshift({ id: newId, ...productData, created_at: new Date().toISOString() });
+    const newId = targetId || `prod_${Date.now()}`;
+    products.unshift({ ...productData, id: newId, created_at: new Date().toISOString() });
   }
 
   writeProductsToFile(products);

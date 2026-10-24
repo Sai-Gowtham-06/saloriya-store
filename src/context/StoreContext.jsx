@@ -112,27 +112,34 @@ export function StoreProvider({ children }) {
   // Action: Update Stock
   const updateProductStock = async (productId, newStock) => {
     const cleanStock = Math.max(0, parseInt(newStock, 10) || 0);
+    const target = products.find((p) => p.id === productId || p.slug === productId);
+    const id = target?.id || productId;
+    const slug = target?.slug;
+
     // 1. Immediate UI update
     setProducts((prev) =>
-      prev.map((p) => (p.id === productId ? { ...p, stock: cleanStock, updated_at: new Date().toISOString() } : p))
+      prev.map((p) =>
+        p.id === id || (slug && p.slug === slug)
+          ? { ...p, stock: cleanStock, updated_at: new Date().toISOString() }
+          : p
+      )
     );
 
     // 2. LocalStorage sync
     try {
       const local = JSON.parse(localStorage.getItem("saloriya_admin_products") || "[]");
-      const idx = local.findIndex((p) => p.id === productId);
+      const idx = local.findIndex((p) => p.id === id || (slug && p.slug === slug));
       if (idx !== -1) {
         local[idx].stock = cleanStock;
-      } else {
-        const currentProd = products.find((p) => p.id === productId);
-        if (currentProd) local.push({ ...currentProd, stock: cleanStock });
+      } else if (target) {
+        local.push({ ...target, stock: cleanStock });
       }
       localStorage.setItem("saloriya_admin_products", JSON.stringify(local));
     } catch (e) {}
 
     // 3. API sync
     try {
-      await fetch(`/api/products/${productId}/stock`, {
+      await fetch(`/api/products/${id}/stock`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ stock: cleanStock })
@@ -142,28 +149,31 @@ export function StoreProvider({ children }) {
     // 4. Supabase sync
     if (isSupabaseConfigured) {
       try {
-        await supabase.from("products").update({ stock: cleanStock }).eq("id", productId);
+        await supabase.from("products").update({ stock: cleanStock }).eq("id", id);
+        if (slug) await supabase.from("products").update({ stock: cleanStock }).eq("slug", slug);
       } catch (e) {}
     }
   };
 
   // Action: Toggle Publish
-  const toggleProductPublish = async (productId) => {
-    let nextPublish = false;
+  const toggleProductPublish = async (productId, targetStatus) => {
+    const target = products.find((p) => p.id === productId || p.slug === productId);
+    const id = target?.id || productId;
+    const slug = target?.slug;
+    const nextPublish = typeof targetStatus === "boolean" ? targetStatus : target?.is_published === false;
+
     setProducts((prev) =>
-      prev.map((p) => {
-        if (p.id === productId) {
-          nextPublish = !p.is_published;
-          return { ...p, is_published: nextPublish, updated_at: new Date().toISOString() };
-        }
-        return p;
-      })
+      prev.map((p) =>
+        p.id === id || (slug && p.slug === slug)
+          ? { ...p, is_published: nextPublish, updated_at: new Date().toISOString() }
+          : p
+      )
     );
 
     // LocalStorage sync
     try {
       const local = JSON.parse(localStorage.getItem("saloriya_admin_products") || "[]");
-      const idx = local.findIndex((p) => p.id === productId);
+      const idx = local.findIndex((p) => p.id === id || (slug && p.slug === slug));
       if (idx !== -1) {
         local[idx].is_published = nextPublish;
         localStorage.setItem("saloriya_admin_products", JSON.stringify(local));
@@ -172,7 +182,7 @@ export function StoreProvider({ children }) {
 
     // API sync
     try {
-      await fetch(`/api/products/${productId}/publish`, {
+      await fetch(`/api/products/${id}/publish`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ is_published: nextPublish })
@@ -182,7 +192,8 @@ export function StoreProvider({ children }) {
     // Supabase sync
     if (isSupabaseConfigured) {
       try {
-        await supabase.from("products").update({ is_published: nextPublish }).eq("id", productId);
+        await supabase.from("products").update({ is_published: nextPublish }).eq("id", id);
+        if (slug) await supabase.from("products").update({ is_published: nextPublish }).eq("slug", slug);
       } catch (e) {}
     }
   };
@@ -227,7 +238,8 @@ export function StoreProvider({ children }) {
 
   // Action: Save / Create Product
   const saveProduct = async (productData) => {
-    const id = productData.id || `prod_${Date.now()}`;
+    const existing = products.find((p) => (productData.id && p.id === productData.id) || (productData.slug && p.slug === productData.slug));
+    const id = productData.id || existing?.id || `prod_${Date.now()}`;
     const normalized = normalizeProduct({ ...productData, id });
 
     // Untrack from deleted if re-created
@@ -237,7 +249,7 @@ export function StoreProvider({ children }) {
     } catch (e) {}
 
     setProducts((prev) => {
-      const idx = prev.findIndex((p) => p.id === id);
+      const idx = prev.findIndex((p) => p.id === id || (normalized.slug && p.slug === normalized.slug));
       if (idx !== -1) {
         const next = [...prev];
         next[idx] = normalized;
@@ -249,7 +261,7 @@ export function StoreProvider({ children }) {
     // LocalStorage sync
     try {
       const local = JSON.parse(localStorage.getItem("saloriya_admin_products") || "[]");
-      const idx = local.findIndex((p) => p.id === id);
+      const idx = local.findIndex((p) => p.id === id || (normalized.slug && p.slug === normalized.slug));
       if (idx !== -1) {
         local[idx] = normalized;
       } else {
@@ -270,8 +282,12 @@ export function StoreProvider({ children }) {
     // Supabase sync
     if (isSupabaseConfigured) {
       try {
-        if (productData.id) {
-          await supabase.from("products").update(normalized).eq("id", id);
+        if (productData.id || existing?.id) {
+          const targetId = productData.id || existing?.id;
+          const { error: updErr } = await supabase.from("products").update(normalized).eq("id", targetId);
+          if (updErr && normalized.slug) {
+            await supabase.from("products").update(normalized).eq("slug", normalized.slug);
+          }
         } else {
           await supabase.from("products").insert([normalized]);
         }

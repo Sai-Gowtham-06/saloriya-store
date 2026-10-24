@@ -160,6 +160,7 @@ export default function AdminProductStudio({ products, onProductChanged, editing
     const finalImageUrls = imageList.map((item) => item.url);
 
     const payload = {
+      ...(formData.id ? { id: formData.id } : {}),
       name: formData.name.trim(),
       slug,
       description: formData.description.trim(),
@@ -192,11 +193,12 @@ export default function AdminProductStudio({ products, onProductChanged, editing
   const handleStockDelta = async (productId, currentStock, delta) => {
     const newStock = Math.max(0, currentStock + delta);
     await updateProductStock(productId, newStock);
+    if (onProductChanged) onProductChanged();
   };
 
   // Toggle publish
   const handleTogglePublish = async (productId, currentPublish) => {
-    await toggleProductPublish(productId);
+    await toggleProductPublish(productId, !currentPublish);
     if (onProductChanged) onProductChanged();
   };
 

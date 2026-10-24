@@ -10,7 +10,7 @@
     "image_urls": [],
     "images": [],
     "is_published": true,
-    "updated_at": "2026-10-24T10:44:08.515Z",
+    "updated_at": "2026-10-24T11:14:58.455Z",
     "id": "prod_1792838648515",
     "created_at": "2026-10-24T10:44:08.528Z"
   },
@@ -38,9 +38,9 @@
       "RED"
     ],
     "stock": 7,
-    "is_published": true,
+    "is_published": false,
     "created_at": "2026-10-23T10:04:42.320745+00:00",
-    "updated_at": "2026-10-24T08:49:16.563Z"
+    "updated_at": "2026-10-24T11:25:59.617Z"
   },
   {
     "id": "a98b731a-154b-4dec-8b81-dd95b4141c11",
@@ -171,10 +171,10 @@
       "https://ybyboplrrovrhnnunkaa.supabase.co/storage/v1/object/public/product-images/0d6e2270-60e1-4aec-af1f-fe3954b235bd-Ornate-Ruby-and-Emerald-Jhumka-Earrings.png"
     ],
     "colours": [],
-    "stock": 5,
+    "stock": 4,
     "is_published": true,
     "created_at": "2026-10-23T11:55:09.774749+00:00",
-    "updated_at": "2026-10-24T10:23:26.995Z"
+    "updated_at": "2026-10-24T11:14:11.796Z"
   },
   {
     "id": "f6ebe650-629a-4a3f-bf6c-ff07e1c0a53a",
@@ -192,9 +192,9 @@
       "RED"
     ],
     "stock": 2,
-    "is_published": false,
+    "is_published": true,
     "created_at": "2026-10-23T12:04:17.271918+00:00",
-    "updated_at": "2026-10-24T10:23:24.077Z"
+    "updated_at": "2026-10-24T11:15:07.890Z"
   },
   {
     "id": "198bedc5-e92f-49f3-8181-9fbada07ad65",

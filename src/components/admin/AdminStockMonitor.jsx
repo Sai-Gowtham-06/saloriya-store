@@ -17,6 +17,7 @@ export default function AdminStockMonitor({ products, onProductChanged, onEditIn
   const handleStockUpdate = async (productId, currentStock, delta) => {
     const newStock = Math.max(0, currentStock + delta);
     await updateProductStock(productId, newStock);
+    if (onProductChanged) onProductChanged();
   };
 
   const handleTogglePublish = async (productId, currentStatus) => {

@@ -27,32 +27,30 @@ export async function saveOtp({ phone, otp, otpHash, expiresAt, requestTimestamp
 
   globalThis.__saloriya_otp_store.set(cleanPhone, record);
 
-  // Optional Supabase sync if credentials exist
+  // Optional non-blocking Supabase sync if credentials exist
   const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
   if (supabaseUrl && supabaseServiceKey) {
-    try {
-      await fetch(`${supabaseUrl}/rest/v1/phone_otps`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "apikey": supabaseServiceKey,
-          "Authorization": `Bearer ${supabaseServiceKey}`,
-          "Prefer": "resolution=merge-duplicates"
-        },
-        body: JSON.stringify({
-          phone: cleanPhone,
-          otp_hash: otpHash,
-          expires_at: new Date(expiresAt).toISOString(),
-          attempts: 0,
-          last_sent_at: new Date(now).toISOString()
-        })
-      });
-    } catch (err) {
+    fetch(`${supabaseUrl}/rest/v1/phone_otps`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": supabaseServiceKey,
+        "Authorization": `Bearer ${supabaseServiceKey}`,
+        "Prefer": "resolution=merge-duplicates"
+      },
+      signal: AbortSignal.timeout(2000),
+      body: JSON.stringify({
+        phone: cleanPhone,
+        otp_hash: otpHash,
+        expires_at: new Date(expiresAt).toISOString(),
+        attempts: 0,
+        last_sent_at: new Date(now).toISOString()
+      })
+    }).catch(err => {
       // Supabase is optional; in-memory store remains primary fallback
-      console.warn("Supabase OTP storage sync:", err.message);
-    }
+    });
   }
 
   return record;
@@ -61,19 +59,20 @@ export async function saveOtp({ phone, otp, otpHash, expiresAt, requestTimestamp
 export async function getOtp(phone) {
   const cleanPhone = String(phone).replace(/\D/g, "");
   
-  // 1. Check in-memory store
+  // 1. Check in-memory store (instant)
   const mem = globalThis.__saloriya_otp_store.get(cleanPhone);
   if (mem) {
     return mem;
   }
 
-  // 2. Check Supabase table
+  // 2. Check Supabase table with fast timeout fallback
   const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
   if (supabaseUrl && supabaseServiceKey) {
     try {
       const res = await fetch(`${supabaseUrl}/rest/v1/phone_otps?phone=eq.${cleanPhone}&select=*`, {
+        signal: AbortSignal.timeout(1500),
         headers: {
           "apikey": supabaseServiceKey,
           "Authorization": `Bearer ${supabaseServiceKey}`
@@ -91,7 +90,7 @@ export async function getOtp(phone) {
         };
       }
     } catch (err) {
-      console.warn("Supabase OTP fetch error:", err.message);
+      // ignore timeout
     }
   }
 

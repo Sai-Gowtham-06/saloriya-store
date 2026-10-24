@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import { resolve } from "path";
 import sendOtpHandler from "./api/otp/send.js";
 import verifyOtpHandler from "./api/otp/verify.js";
@@ -48,15 +48,20 @@ function vercelApiDevPlugin() {
   };
 }
 
-export default defineConfig({
-  plugins: [vercelApiDevPlugin()],
-  build: {
-    rollupOptions: {
-      input: {
-        main: resolve(__dirname, "index.html"),
-        admin: resolve(__dirname, "admin.html"),
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "");
+  Object.assign(process.env, env);
+
+  return {
+    plugins: [vercelApiDevPlugin()],
+    build: {
+      rollupOptions: {
+        input: {
+          main: resolve(__dirname, "index.html"),
+          admin: resolve(__dirname, "admin.html"),
+        },
       },
     },
-  },
+  };
 });
 

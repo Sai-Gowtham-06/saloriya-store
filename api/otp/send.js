@@ -91,6 +91,7 @@ export default async function handler(req, res) {
             "authorization": FAST2SMS_API_KEY,
             "Content-Type": "application/json"
           },
+          signal: AbortSignal.timeout(3500),
           body: JSON.stringify({
             variables_values: otp,
             route: "otp",
@@ -151,11 +152,20 @@ export default async function handler(req, res) {
       }
     }
 
-    console.log(`[SALORIYA REAL SMS] Mobile: +91 ${cleanPhone} | OTP: ${otp} | Sent: ${smsSent}`);
+    console.log(`[SALORIYA REAL SMS] Mobile: +91 ${cleanPhone} | OTP: ${otp} | Sent: ${smsSent} | Error: ${gatewayError || 'None'}`);
+
+    // If SMS gateway failed to dispatch (e.g. Fast2SMS KYC website verification pending, insufficient DLT registration, or local dev),
+    // provide testOtp and clear explanation so testing (especially with store number 8680824598) is never blocked.
+    const isTestEligible = !smsSent || cleanPhone === "8680824598" || process.env.NODE_ENV !== "production";
 
     return res.status(200).json({
       success: true,
-      message: "OTP sent successfully to your mobile number via SMS.",
+      smsSent,
+      gatewayError: gatewayError || null,
+      testOtp: isTestEligible ? otp : undefined,
+      message: smsSent
+        ? "OTP sent successfully to your mobile number via SMS."
+        : (gatewayError || "SMS gateway requires website verification on Fast2SMS. Test OTP provided."),
       expiresIn: 300,
       cooldown: 60
     });

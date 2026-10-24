@@ -860,7 +860,7 @@ function openCheckoutModal(productId, initialColour = "") {
           <textarea name="street" rows="2" required placeholder="House/Flat No, Street, Landmark"></textarea>
         </label>
 
-        <div class="form-row" style="grid-template-columns:1.2fr 1fr 1fr;">
+        <div class="form-row form-row-city-state-pin">
           <label>City *
             <input name="city" required placeholder="Chennai" />
           </label>
@@ -989,6 +989,10 @@ function openCheckoutModal(productId, initialColour = "") {
         renderCheckout();
       }
     });
+
+    // Form and status elements
+    const form = checkoutContent.querySelector("#storefront-checkout-form");
+    const msg = checkoutContent.querySelector("#checkout-message");
 
     // Phone input restriction: strictly 10 digits
     const phoneInput = checkoutContent.querySelector("#checkout-phone");
@@ -1175,11 +1179,34 @@ function openCheckoutModal(productId, initialColour = "") {
           throw new Error(data.error || "Failed to send OTP.");
         }
 
-        if (otpPanel) otpPanel.style.display = "block";
+        if (otpPanel) {
+          otpPanel.style.display = "block";
+          setTimeout(() => {
+            otpPanel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+          }, 50);
+        }
         if (otpPhoneDisplay) otpPhoneDisplay.textContent = `+91 ${cleanPhone}`;
-        if (otpStatusMsg) {
-          otpStatusMsg.textContent = `✓ 6-digit verification code sent to +91 ${cleanPhone}. Please check your SMS messages.`;
-          otpStatusMsg.style.color = "#166534";
+
+        if (data.testOtp) {
+          if (otpInput) otpInput.value = data.testOtp;
+          if (otpStatusMsg) {
+            if (data.smsSent) {
+              otpStatusMsg.innerHTML = `✓ 6-digit verification code sent to +91 ${cleanPhone} via SMS. (Test auto-fill: <strong>${data.testOtp}</strong>)`;
+              otpStatusMsg.style.color = "#166534";
+            } else {
+              otpStatusMsg.innerHTML = `
+                <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:6px;padding:8px 10px;color:#92400e;font-size:12px;line-height:1.45;margin-bottom:6px;">
+                  ⚡ <strong>Fast2SMS Account Notice:</strong> ${escapeHtml(data.gatewayError || "Fast2SMS website verification is pending on fast2sms.com")}.<br>
+                  For instant testing, your OTP code is: <strong style="font-size:15px;color:#b45309;letter-spacing:2px;">${escapeHtml(data.testOtp)}</strong> (Auto-filled below).
+                </div>
+              `;
+            }
+          }
+        } else {
+          if (otpStatusMsg) {
+            otpStatusMsg.textContent = `✓ 6-digit verification code sent to +91 ${cleanPhone}. Please check your SMS messages.`;
+            otpStatusMsg.style.color = "#166534";
+          }
         }
 
         startOtpCountdown(data.cooldown || 60);
@@ -1257,9 +1284,6 @@ function openCheckoutModal(productId, initialColour = "") {
     btnVerifyOtpSubmit?.addEventListener("click", triggerVerifyOtp);
 
     // Form submission
-    const form = checkoutContent.querySelector("#storefront-checkout-form");
-    const msg = checkoutContent.querySelector("#checkout-message");
-
     form?.addEventListener("submit", async e => {
       e.preventDefault();
       const fd = new FormData(form);

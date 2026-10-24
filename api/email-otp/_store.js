@@ -237,32 +237,24 @@ export async function sendOtpEmail({ email, otp }) {
     }
   }
 
-  // 2. Try Nodemailer SMTP (e.g. Gmail App Password or custom SMTP)
+  // 2. Try Nodemailer SMTP (Gmail App Password or custom SMTP)
   if (smtpUser && smtpPass && smtpPass !== "your_gmail_app_password_here") {
     try {
-      const isGmail = smtpHost.includes("gmail") || smtpUser.endsWith("@gmail.com");
-      const transporter = nodemailer.createTransport(
-        isGmail
-          ? {
-              service: "gmail",
-              auth: {
-                user: smtpUser,
-                pass: smtpPass.replace(/\s+/g, "") // remove any spaces in 16-char app password
-              }
-            }
-          : {
-              host: smtpHost,
-              port: smtpPort,
-              secure: smtpPort === 465,
-              auth: {
-                user: smtpUser,
-                pass: smtpPass
-              }
-            }
-      );
+      const cleanPass = smtpPass.replace(/\s+/g, "");
+      const transporter = nodemailer.createTransport({
+        host: smtpHost || "smtp.gmail.com",
+        port: smtpPort || 587,
+        secure: smtpPort === 465, // false for 587 (uses STARTTLS)
+        auth: {
+          user: smtpUser,
+          pass: cleanPass
+        }
+      });
+
+      const senderFrom = process.env.SMTP_FROM || `"SALORIYA Store" <${smtpUser}>`;
 
       const info = await transporter.sendMail({
-        from: `"SALORIYA Store" <${smtpUser}>`,
+        from: senderFrom,
         to: normEmail,
         subject: `💎 Your SALORIYA Order Verification Code: ${otp}`,
         html: htmlContent

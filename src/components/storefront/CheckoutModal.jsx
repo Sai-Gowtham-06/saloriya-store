@@ -2,10 +2,6 @@ import React, { useState, useEffect, useRef } from "react";
 import { useStore, getColourImage } from "../../context/StoreContext";
 import { supabase, isSupabaseConfigured } from "../../supabase.js";
 
-const DEFAULT_PROMOS = [
-  { code: "FREEDELIVERY", discount_type: "free_delivery", amount: 50, description: "Free Courier & Delivery", is_active: true }
-];
-
 export default function CheckoutModal() {
   const { checkoutItem, closeCheckout, formatMoney, updateProductStock } = useStore();
 
@@ -41,6 +37,7 @@ export default function CheckoutModal() {
   const [promoInput, setPromoInput] = useState("");
   const [appliedPromo, setAppliedPromo] = useState(null);
   const [promoError, setPromoError] = useState("");
+  const [promoChecking, setPromoChecking] = useState(false);
 
   // Order submission
   const [submitting, setSubmitting] = useState(false);
@@ -205,26 +202,70 @@ export default function CheckoutModal() {
   };
 
   // Promo Code Handler
-  const handleApplyPromo = () => {
+  const handleApplyPromo = async () => {
     const code = promoInput.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
     if (!code) {
       setPromoError("Please enter a promo code.");
       return;
     }
 
-    let found = DEFAULT_PROMOS.find((p) => p.code === code);
-    if (!found) {
-      try {
-        const local = JSON.parse(localStorage.getItem("saloriya_admin_promo_codes") || "[]");
-        found = local.find((p) => p.code === code && p.is_active !== false);
-      } catch (e) {}
-    }
+    setPromoError("");
+    setPromoChecking(true);
 
-    if (found) {
-      setAppliedPromo(found);
-      setPromoError("");
-    } else {
-      setPromoError(`Promo code "${code}" is invalid or expired.`);
+    try {
+      // 1. Check if the promo code was explicitly deleted or removed by admin
+      const deletedCodes = (() => {
+        try {
+          return JSON.parse(localStorage.getItem("saloriya_deleted_promo_codes") || "[]");
+        } catch (e) {
+          return [];
+        }
+      })();
+
+      if (deletedCodes.includes(code)) {
+        setPromoError(`Promo code "${code}" is invalid or expired.`);
+        setAppliedPromo(null);
+        return;
+      }
+
+      let found = null;
+
+      // 2. Query live database if Supabase is configured
+      if (isSupabaseConfigured) {
+        try {
+          const { data, error } = await supabase
+            .from("promo_codes")
+            .select("*")
+            .ilike("code", code)
+            .eq("is_active", true)
+            .maybeSingle();
+
+          if (!error && data) {
+            found = data;
+          }
+        } catch (e) {
+          console.warn("Supabase promo check error:", e);
+        }
+      }
+
+      // 3. Fallback to local admin promo codes
+      if (!found) {
+        try {
+          const local = JSON.parse(localStorage.getItem("saloriya_admin_promo_codes") || "[]");
+          found = local.find((p) => p.code.toUpperCase() === code && p.is_active !== false);
+        } catch (e) {}
+      }
+
+      // If code was deleted by admin or not found in active promo codes, reject
+      if (found && !deletedCodes.includes(found.code.toUpperCase())) {
+        setAppliedPromo(found);
+        setPromoError("");
+      } else {
+        setAppliedPromo(null);
+        setPromoError(`Promo code "${code}" is invalid or expired.`);
+      }
+    } finally {
+      setPromoChecking(false);
     }
   };
 
@@ -430,7 +471,7 @@ export default function CheckoutModal() {
   return (
     <div className="product-modal" role="dialog" aria-modal="true">
       <div className="product-modal-backdrop"></div>
-      <div ref={dialogRef} className="product-modal-dialog checkout-dialog" style={{ maxWidth: "600px", padding: "26px 28px" }}>
+      <div ref={dialogRef} className="product-modal-dialog checkout-dialog" style={{ maxWidth: "600px" }}>
         <button className="product-modal-close" onClick={handleCloseCheckout} aria-label="Close checkout">
           ✕
         </button>
@@ -1213,28 +1254,77 @@ export default function CheckoutModal() {
                   <div
                     style={{
                       display: "flex",
+                      flexDirection: "column",
                       alignItems: "center",
-                      justifyContent: "space-between",
+                      justifyContent: "center",
+                      textAlign: "center",
                       background: "#ffffff",
                       border: "1px solid var(--line)",
-                      padding: "8px 12px",
-                      borderRadius: "6px",
-                      marginBottom: "14px"
+                      padding: "10px 14px",
+                      borderRadius: "8px",
+                      marginBottom: "14px",
+                      width: "100%",
+                      boxSizing: "border-box"
                     }}
                   >
-                    <div>
-                      <span style={{ fontSize: "10.5px", color: "var(--muted)", display: "block" }}>UPI ID:</span>
-                      <code style={{ fontSize: "13px", fontWeight: 700, color: "var(--wine)" }}>{upiId}</code>
-                    </div>
-                    <button
-                      type="button"
-                      className="button button-small button-outline"
-                      onClick={handleCopyUpi}
-                      style={{ padding: "4px 10px", fontSize: "11.5px" }}
+                    <span
+                      style={{
+                        fontSize: "10.5px",
+                        color: "var(--muted)",
+                        fontWeight: 600,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.5px",
+                        display: "block",
+                        marginBottom: "4px",
+                        textAlign: "center"
+                      }}
                     >
-                      {copiedUpi ? "✓ Copied!" : "Copy"}
-                    </button>
+                      UPI ID:
+                    </span>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "10px",
+                        flexWrap: "wrap",
+                        width: "100%",
+                        textAlign: "center"
+                      }}
+                    >
+                      <code
+                        style={{
+                          fontSize: "13.5px",
+                          fontWeight: 700,
+                          color: "var(--wine)",
+                          letterSpacing: "0.3px",
+                          fontFamily: "monospace",
+                          textAlign: "center",
+                          wordBreak: "break-all"
+                        }}
+                      >
+                        {upiId}
+                      </code>
+                      <button
+                        type="button"
+                        className="button button-small button-outline"
+                        onClick={handleCopyUpi}
+                        style={{
+                          padding: "4px 12px",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          letterSpacing: "0.5px",
+                          borderRadius: "6px",
+                          whiteSpace: "nowrap",
+                          cursor: "pointer",
+                          height: "auto"
+                        }}
+                      >
+                        {copiedUpi ? "✓ Copied!" : "Copy"}
+                      </button>
+                    </div>
                   </div>
+
 
                   {/* UTR Input */}
                   <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginBottom: "12px" }}>
@@ -1357,6 +1447,12 @@ export default function CheckoutModal() {
                         placeholder="ENTER PROMO CODE"
                         value={promoInput}
                         onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleApplyPromo();
+                          }
+                        }}
                         style={{
                           flex: "1 1 auto",
                           minWidth: 0,
@@ -1375,6 +1471,7 @@ export default function CheckoutModal() {
                         id="checkout-apply-promo-btn"
                         type="button"
                         className="button button-gold"
+                        disabled={promoChecking}
                         style={{
                           flex: "0 0 auto",
                           width: "auto",
@@ -1384,13 +1481,14 @@ export default function CheckoutModal() {
                           letterSpacing: "0.5px",
                           borderRadius: "6px",
                           whiteSpace: "nowrap",
-                          cursor: "pointer",
+                          cursor: promoChecking ? "wait" : "pointer",
                           height: "auto",
-                          minHeight: "42px"
+                          minHeight: "42px",
+                          opacity: promoChecking ? 0.7 : 1
                         }}
                         onClick={handleApplyPromo}
                       >
-                        APPLY
+                        {promoChecking ? "CHECKING…" : "APPLY"}
                       </button>
                     </div>
                     {promoError && (

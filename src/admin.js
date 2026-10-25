@@ -1890,7 +1890,16 @@ async function loadPromoCodes() {
   const badge = document.querySelector("#promos-badge");
 
   let localPromos = getLocalPromoCodes();
-  if (!localPromos || !localPromos.length) {
+  const deletedCodes = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("saloriya_deleted_promo_codes") || "[]");
+    } catch (e) {
+      return [];
+    }
+  })();
+  const promoInitialized = localStorage.getItem("saloriya_promo_initialized") === "true";
+
+  if ((!localPromos || !localPromos.length) && !deletedCodes.includes("FREEDELIVERY") && !promoInitialized) {
     localPromos = getInitialDefaultPromos();
     setLocalPromoCodes(localPromos);
   }
@@ -2100,18 +2109,29 @@ promosListContainer?.addEventListener("click", async e => {
   const delBtn = e.target.closest("[data-delete-promo]");
   if (delBtn) {
     const id = delBtn.dataset.deletePromo;
-    const code = delBtn.dataset.code;
+    const code = (delBtn.dataset.code || "").toUpperCase();
     if (!confirm(`Are you sure you want to delete promo code "${code}"?`)) return;
+
+    // Track deleted codes so removed codes are never re-seeded
+    try {
+      const deleted = JSON.parse(localStorage.getItem("saloriya_deleted_promo_codes") || "[]");
+      if (code && !deleted.includes(code)) deleted.push(code);
+      localStorage.setItem("saloriya_deleted_promo_codes", JSON.stringify(deleted));
+      localStorage.setItem("saloriya_promo_initialized", "true");
+    } catch (e) {}
 
     if (isSupabaseConfigured) {
       try {
         await supabase.from("promo_codes").delete().eq("id", id);
+        if (code) {
+          await supabase.from("promo_codes").delete().eq("code", code);
+        }
       } catch (err) {
         console.warn("Supabase promo delete fallback:", err);
       }
     }
 
-    promoCodesList = promoCodesList.filter(p => p.id !== id);
+    promoCodesList = promoCodesList.filter(p => p.id !== id && p.code.toUpperCase() !== code);
     setLocalPromoCodes(promoCodesList);
     renderPromoCodes();
   }

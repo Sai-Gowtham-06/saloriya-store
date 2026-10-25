@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { cleanEmail, hashOtp, saveOtp, getOtp, sendOtpEmail } from "./_store.js";
+import { cleanEmail, hashOtp, saveOtp, getOtp, deleteOtp, sendOtpEmail } from "./_store.js";
 
 export default async function handler(req, res) {
   // CORS & Header handling
@@ -52,16 +52,16 @@ export default async function handler(req, res) {
       });
     }
 
-    // b. Max 3 OTP requests per email in 15 minutes
+    // b. Max 5 OTP requests per email in 15 minutes
     const windowStart = now - 15 * 60 * 1000;
     let requestTimestamps = existing ? (existing.requestTimestamps || []).filter((t) => t > windowStart) : [];
 
-    if (requestTimestamps.length >= 3) {
+    if (requestTimestamps.length >= 5) {
       const oldestInWindow = Math.min(...requestTimestamps);
       const waitMins = Math.ceil((oldestInWindow + 15 * 60 * 1000 - now) / (60 * 1000));
       return res.status(429).json({
         success: false,
-        error: `Too many OTP requests. Maximum 3 attempts allowed per 15 minutes. Please try again in ${waitMins} minute(s).`
+        error: `Too many OTP requests. Maximum 5 attempts allowed per 15 minutes. Please try again in ${waitMins} minute(s).`
       });
     }
 
@@ -83,6 +83,15 @@ export default async function handler(req, res) {
 
     // 6. Send branded HTML email via Nodemailer / Resend
     const sendResult = await sendOtpEmail({ email: normEmail, otp });
+
+    if (!sendResult.success) {
+      // Revert OTP record if email failed to deliver so customer can retry
+      await deleteOtp(normEmail);
+      return res.status(500).json({
+        success: false,
+        error: sendResult.error || "Could not deliver verification email. Please check your email address or try again."
+      });
+    }
 
     return res.status(200).json({
       success: true,

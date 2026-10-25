@@ -1,5 +1,10 @@
 import crypto from "crypto";
 import nodemailer from "nodemailer";
+import dotenv from "dotenv";
+
+// Load environment variables immediately on module import
+dotenv.config();
+dotenv.config({ path: ".env.local", override: true });
 
 // Persistent in-memory map attached to Node globalThis to survive module reloads & dev server calls
 globalThis.__saloriya_email_otp_store = globalThis.__saloriya_email_otp_store || new Map();
@@ -161,7 +166,8 @@ export async function sendOtpEmail({ email, otp }) {
   const smtpUser = process.env.SMTP_USER || process.env.EMAIL_USER;
   const smtpPass = process.env.SMTP_PASS || process.env.EMAIL_PASS;
   const smtpHost = process.env.SMTP_HOST || "smtp.gmail.com";
-  const smtpPort = parseInt(process.env.SMTP_PORT || "465", 10);
+  const smtpPort = parseInt(process.env.SMTP_PORT || "587", 10);
+  const isSecure = process.env.SMTP_SECURE !== undefined ? process.env.SMTP_SECURE === "true" : smtpPort === 465;
   const resendApiKey = process.env.RESEND_API_KEY;
 
   const htmlContent = `
@@ -226,6 +232,7 @@ export async function sendOtpEmail({ email, otp }) {
           from: "SALORIYA Store <orders@saloriya.com>",
           to: [normEmail],
           subject: `💎 Your SALORIYA Order Verification Code: ${otp}`,
+          text: `Your SALORIYA order verification code is: ${otp}\n\nThis verification code is valid for 5 minutes.\n\nIf you did not initiate this order, please disregard this email. Never share your verification code with anyone.\n\n— SALORIYA Store`,
           html: htmlContent
         })
       });
@@ -244,19 +251,25 @@ export async function sendOtpEmail({ email, otp }) {
       const transporter = nodemailer.createTransport({
         host: smtpHost || "smtp.gmail.com",
         port: smtpPort || 587,
-        secure: smtpPort === 465, // false for 587 (uses STARTTLS)
+        secure: isSecure,
         auth: {
           user: smtpUser,
           pass: cleanPass
+        },
+        tls: {
+          rejectUnauthorized: false
         }
       });
 
-      const senderFrom = process.env.SMTP_FROM || `"SALORIYA Store" <${smtpUser}>`;
+      const rawFrom = process.env.SMTP_FROM || `"SALORIYA Official" <${smtpUser}>`;
+      const senderFrom = rawFrom.replace(/^"|"$/g, "").trim();
 
       const info = await transporter.sendMail({
         from: senderFrom,
         to: normEmail,
+        replyTo: smtpUser,
         subject: `💎 Your SALORIYA Order Verification Code: ${otp}`,
+        text: `Your SALORIYA order verification code is: ${otp}\n\nThis verification code is valid for 5 minutes.\n\nIf you did not initiate this order, please disregard this email. Never share your verification code with anyone.\n\n— SALORIYA Store`,
         html: htmlContent
       });
 
@@ -264,7 +277,7 @@ export async function sendOtpEmail({ email, otp }) {
       return { success: true, method: "nodemailer", messageId: info.messageId };
     } catch (err) {
       console.error("[SALORIYA EMAIL OTP] Nodemailer SMTP delivery error:", err.message);
-      // Fall through to logging
+      return { success: false, error: err.message };
     }
   } else {
     console.warn(`[SALORIYA EMAIL OTP NOTICE] Real email could not be sent to ${normEmail} because SMTP_USER and SMTP_PASS are not configured in .env.local.`);
@@ -275,5 +288,5 @@ export async function sendOtpEmail({ email, otp }) {
   console.log(`[SALORIYA EMAIL OTP] Verification code for ${normEmail}: ${otp}`);
   console.log(`======================================================\n`);
 
-  return { success: true, method: "console-fallback" };
+  return { success: false, error: "SMTP credentials are not configured to send emails." };
 }

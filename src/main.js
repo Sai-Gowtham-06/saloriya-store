@@ -1047,9 +1047,17 @@ function openCheckoutModal(productId, initialColour = "") {
         }
       }
 
-      // 3. Fallback default codes
-      if (!matchedPromo && (code === "FREEDELIVERY" || code === "FREESHIP")) {
-        matchedPromo = { code, discount_type: "free_delivery", discount_value: 50 };
+      // 3. Check if deleted by admin
+      const deletedCodes = (() => {
+        try {
+          return JSON.parse(localStorage.getItem("saloriya_deleted_promo_codes") || "[]");
+        } catch (e) {
+          return [];
+        }
+      })();
+
+      if (deletedCodes.includes(code)) {
+        matchedPromo = null;
       }
 
       if (matchedPromo) {
@@ -1533,13 +1541,16 @@ function openCheckoutModal(productId, initialColour = "") {
           <div class="payment-qr-badge" style="margin-top:8px;">✦ Scan with Google Pay / PhonePe / Paytm / Any UPI App</div>
         </div>
 
-        <div class="payment-upi-details">
-          <div class="payment-upi-id-box">
-            <span class="upi-label">UPI ID:</span>
-            <code class="upi-code" id="upi-id-text">${upiId}</code>
-            <button type="button" class="btn-copy-upi" id="btn-copy-upi" title="Copy UPI ID">Copy</button>
+        <div class="payment-upi-details" style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;margin:14px 0;">
+          <div class="payment-upi-id-box" style="display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:4px;padding:10px 14px;border-radius:8px;background:#ffffff;border:1px solid var(--line);margin:0 auto;width:100%;box-sizing:border-box;">
+            <span class="upi-label" style="font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px;font-weight:600;display:block;">UPI ID:</span>
+            <div style="display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap;width:100%;">
+              <code class="upi-code" id="upi-id-text" style="font-size:13.5px;font-weight:700;color:var(--wine);letter-spacing:0.3px;font-family:monospace;word-break:break-all;">${upiId}</code>
+              <button type="button" class="btn-copy-upi" id="btn-copy-upi" title="Copy UPI ID" style="padding:4px 12px;font-size:11px;font-weight:700;border-radius:6px;cursor:pointer;">Copy</button>
+            </div>
           </div>
         </div>
+
 
         <div class="payment-verify-form">
           <div class="payment-screenshot-card" style="background:#fff7f3;border:1.5px dashed var(--wine);border-radius:10px;padding:16px;text-align:center;margin-bottom:14px;">

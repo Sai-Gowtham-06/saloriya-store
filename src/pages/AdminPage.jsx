@@ -22,16 +22,18 @@ export default function AdminPage() {
   const [showRecordModal, setShowRecordModal] = useState(false);
   const [promosCount, setPromosCount] = useState(() => {
     try {
+      const deleted = JSON.parse(localStorage.getItem("saloriya_deleted_promo_codes") || "[]");
+      const initialized = localStorage.getItem("saloriya_promo_initialized") === "true";
       const local = JSON.parse(localStorage.getItem("saloriya_admin_promo_codes") || "[]");
       if (Array.isArray(local) && local.length > 0) {
-        const isOld3Defaults = local.length === 3 &&
-          local.some((p) => p.code === "FREEDELIVERY") &&
-          local.some((p) => p.code === "SALORIYA50") &&
-          local.some((p) => p.code === "GOLD2026");
-        return isOld3Defaults ? 1 : local.length;
+        const filtered = local.filter((p) => !deleted.includes(p.code));
+        return filtered.length;
+      }
+      if (deleted.includes("FREEDELIVERY") || initialized) {
+        return 0;
       }
     } catch (e) {}
-    return 1;
+    return 0;
   });
 
   const getDeletedOrderIds = () => {

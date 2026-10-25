@@ -38,10 +38,10 @@
       "https://ybyboplrrovrhnnunkaa.supabase.co/storage/v1/object/public/product-images/8bc81f8a-0da5-4253-ad08-c28638af3721-Ornate-Ruby-and-Pearl-Jhumka-Earrings.png"
     ],
     "colours": [],
-    "stock": 12,
+    "stock": 11,
     "is_published": true,
     "created_at": "2026-10-23T10:35:50.732476+00:00",
-    "updated_at": "2026-10-24T10:23:45.645Z"
+    "updated_at": "2026-10-25T07:49:36.190Z"
   },
   {
     "id": "86132a0e-6532-46e8-8dd7-997a1b8c3940",
@@ -176,10 +176,10 @@
       "BLUE",
       "RED"
     ],
-    "stock": 1,
+    "stock": 2,
     "is_published": true,
     "created_at": "2026-10-23T12:04:17.271918+00:00",
-    "updated_at": "2026-10-24T12:35:08.293Z"
+    "updated_at": "2026-10-25T07:54:47.097Z"
   },
   {
     "id": "198bedc5-e92f-49f3-8181-9fbada07ad65",

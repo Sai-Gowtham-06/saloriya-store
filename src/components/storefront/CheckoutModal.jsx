@@ -113,12 +113,13 @@ export default function CheckoutModal() {
   let promoDiscountPaise = 0;
 
   if (appliedPromo) {
+    const promoAmt = parseFloat(appliedPromo.discount_value ?? appliedPromo.amount ?? 50);
     if (appliedPromo.discount_type === "free_delivery") {
       deliveryPaise = 0;
     } else if (appliedPromo.discount_type === "fixed_amount") {
-      promoDiscountPaise = (appliedPromo.amount || 0) * 100;
+      promoDiscountPaise = Math.round(promoAmt * 100);
     } else if (appliedPromo.discount_type === "percentage") {
-      promoDiscountPaise = Math.round(subtotalPaise * ((appliedPromo.amount || 0) / 100));
+      promoDiscountPaise = Math.round(subtotalPaise * (promoAmt / 100));
     }
   }
 
@@ -245,10 +246,13 @@ export default function CheckoutModal() {
             .select("*")
             .ilike("code", code)
             .eq("is_active", true)
-            .maybeSingle();
+            .limit(1);
 
-          if (!error && data) {
-            found = data;
+          if (!error && Array.isArray(data) && data.length > 0) {
+            found = {
+              ...data[0],
+              amount: parseFloat(data[0].discount_value ?? data[0].amount ?? 50)
+            };
           }
         } catch (e) {
           console.warn("Supabase promo check error:", e);
@@ -259,8 +263,26 @@ export default function CheckoutModal() {
       if (!found) {
         try {
           const local = JSON.parse(localStorage.getItem("saloriya_admin_promo_codes") || "[]");
-          found = local.find((p) => p.code.toUpperCase() === code && p.is_active !== false);
+          const item = local.find((p) => p.code.toUpperCase() === code && p.is_active !== false);
+          if (item) {
+            found = {
+              ...item,
+              amount: parseFloat(item.discount_value ?? item.amount ?? 50)
+            };
+          }
         } catch (e) {}
+      }
+
+      // 4. Fallback for default FREEDELIVERY if not explicitly deleted
+      if (!found && code === "FREEDELIVERY" && !deletedCodes.includes("FREEDELIVERY")) {
+        found = {
+          code: "FREEDELIVERY",
+          discount_type: "free_delivery",
+          discount_value: 50,
+          amount: 50,
+          description: "Complimentary Free Transport & Packaging",
+          is_active: true
+        };
       }
 
       // If code was deleted by admin or not found in active promo codes, reject
@@ -1449,7 +1471,7 @@ export default function CheckoutModal() {
                       }}
                     >
                       <span>Have a Promo Code?</span>
-                      <span style={{ fontSize: "10.5px", color: "var(--muted)", fontWeight: 400 }}>(e.g. FREEDELIVERY)</span>
+                      <span style={{ fontSize: "10.5px", color: "var(--muted)", fontWeight: 400 }}></span>
                     </label>
                     <div className="promo-input-row" style={{ display: "flex", alignItems: "stretch", gap: "8px", width: "100%" }}>
                       <input
@@ -1457,6 +1479,9 @@ export default function CheckoutModal() {
                         type="text"
                         placeholder="ENTER PROMO CODE"
                         value={promoInput}
+                        autoCapitalize="characters"
+                        autoCorrect="off"
+                        spellCheck="false"
                         onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
@@ -1495,6 +1520,7 @@ export default function CheckoutModal() {
                           cursor: promoChecking ? "wait" : "pointer",
                           height: "auto",
                           minHeight: "42px",
+                          touchAction: "manipulation",
                           opacity: promoChecking ? 0.7 : 1
                         }}
                         onClick={handleApplyPromo}

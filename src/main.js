@@ -1025,13 +1025,18 @@ function openCheckoutModal(productId, initialColour = "") {
       // 1. Check Supabase promo_codes table
       if (isSupabaseConfigured) {
         try {
-          const { data } = await supabase
+          const { data, error } = await supabase
             .from("promo_codes")
             .select("*")
             .ilike("code", code)
             .eq("is_active", true)
-            .maybeSingle();
-          if (data) matchedPromo = data;
+            .limit(1);
+          if (!error && Array.isArray(data) && data.length > 0) {
+            matchedPromo = {
+              ...data[0],
+              amount: parseFloat(data[0].discount_value ?? data[0].amount ?? 50)
+            };
+          }
         } catch (e) {
           console.warn("Supabase promo check fallback:", e);
         }
@@ -1041,13 +1046,19 @@ function openCheckoutModal(productId, initialColour = "") {
       if (!matchedPromo) {
         try {
           const localPromos = JSON.parse(localStorage.getItem("saloriya_admin_promo_codes") || "[]");
-          matchedPromo = localPromos.find(p => p.code.toUpperCase() === code && p.is_active);
+          const item = localPromos.find(p => p.code.toUpperCase() === code && p.is_active);
+          if (item) {
+            matchedPromo = {
+              ...item,
+              amount: parseFloat(item.discount_value ?? item.amount ?? 50)
+            };
+          }
         } catch (e) {
           // ignore
         }
       }
 
-      // 3. Check if deleted by admin
+      // 3. Fallback for default FREEDELIVERY if not deleted
       const deletedCodes = (() => {
         try {
           return JSON.parse(localStorage.getItem("saloriya_deleted_promo_codes") || "[]");
@@ -1055,6 +1066,16 @@ function openCheckoutModal(productId, initialColour = "") {
           return [];
         }
       })();
+
+      if (!matchedPromo && code === "FREEDELIVERY" && !deletedCodes.includes("FREEDELIVERY")) {
+        matchedPromo = {
+          code: "FREEDELIVERY",
+          discount_type: "free_delivery",
+          discount_value: 50,
+          amount: 50,
+          description: "Free Delivery"
+        };
+      }
 
       if (deletedCodes.includes(code)) {
         matchedPromo = null;

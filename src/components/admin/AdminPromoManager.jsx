@@ -32,7 +32,10 @@ export default function AdminPromoManager({ onPromosUpdated }) {
       try {
         const { data, error } = await supabase.from("promo_codes").select("*").order("created_at", { ascending: false });
         if (!error && Array.isArray(data) && data.length > 0) {
-          list = data;
+          list = data.map((p) => ({
+            ...p,
+            amount: Number(p.discount_value ?? p.amount ?? 50)
+          }));
         }
       } catch (e) {}
     }
@@ -46,7 +49,10 @@ export default function AdminPromoManager({ onPromosUpdated }) {
             local.some((p) => p.code === "FREEDELIVERY") &&
             local.some((p) => p.code === "SALORIYA50") &&
             local.some((p) => p.code === "GOLD2026");
-          list = isOld3Defaults ? DEFAULT_PROMOS : local;
+          list = (isOld3Defaults ? DEFAULT_PROMOS : local).map((p) => ({
+            ...p,
+            amount: Number(p.discount_value ?? p.amount ?? 50)
+          }));
         }
       } catch (e) {}
     }
@@ -58,6 +64,21 @@ export default function AdminPromoManager({ onPromosUpdated }) {
 
     if (!list.length && !deletedCodes.includes("FREEDELIVERY") && !localStorage.getItem("saloriya_promo_initialized")) {
       list = DEFAULT_PROMOS;
+    }
+
+    // Cross-device sync: Ensure valid promo codes are present in Supabase so mobile users get them immediately
+    if (isSupabaseConfigured && list.length > 0) {
+      try {
+        for (const item of list) {
+          await supabase.from("promo_codes").upsert([{
+            code: item.code,
+            discount_type: item.discount_type || "free_delivery",
+            discount_value: Number(item.discount_value ?? item.amount ?? 50),
+            description: item.description || "Special Promo",
+            is_active: item.is_active !== false
+          }], { onConflict: "code" });
+        }
+      } catch (e) {}
     }
 
     try {
@@ -83,6 +104,7 @@ export default function AdminPromoManager({ onPromosUpdated }) {
     const newPromo = {
       code,
       discount_type: discountType,
+      discount_value: numAmount,
       amount: numAmount,
       description: newDesc.trim() || (
         discountType === "free_delivery"
@@ -102,11 +124,20 @@ export default function AdminPromoManager({ onPromosUpdated }) {
       localStorage.setItem("saloriya_promo_initialized", "true");
     } catch (e) {}
 
+    // Save to Supabase using correct column name discount_value
     try {
       if (isSupabaseConfigured) {
-        await supabase.from("promo_codes").insert([newPromo]);
+        await supabase.from("promo_codes").upsert([{
+          code: newPromo.code,
+          discount_type: newPromo.discount_type,
+          discount_value: newPromo.discount_value,
+          description: newPromo.description,
+          is_active: true
+        }], { onConflict: "code" });
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn("Supabase promo insert error:", e);
+    }
 
     const updated = [newPromo, ...promos.filter((p) => p.code !== code)];
     localStorage.setItem("saloriya_admin_promo_codes", JSON.stringify(updated));
@@ -134,7 +165,7 @@ export default function AdminPromoManager({ onPromosUpdated }) {
     // 2. Delete from Supabase
     try {
       if (isSupabaseConfigured) {
-        await supabase.from("promo_codes").delete().eq("code", code);
+        await supabase.from("promo_codes").delete().ilike("code", code);
       }
     } catch (e) {}
 

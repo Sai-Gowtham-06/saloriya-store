@@ -1151,6 +1151,8 @@ function openCheckoutModal(productId, initialColour = "") {
       otpTimerInterval = setInterval(updateTimer, 1000);
     }
 
+    let lastPhoneOtpSessionToken = "";
+
     // Send OTP function
     async function triggerSendOtp() {
       const rawPhone = phoneInput?.value || "";
@@ -1186,6 +1188,8 @@ function openCheckoutModal(productId, initialColour = "") {
         if (!res.ok || !data.success) {
           throw new Error(data.error || "Failed to send OTP.");
         }
+
+        lastPhoneOtpSessionToken = data.sessionToken || "";
 
         if (otpPanel) {
           otpPanel.style.display = "block";
@@ -1259,7 +1263,11 @@ function openCheckoutModal(productId, initialColour = "") {
         const res = await fetch("/api/otp/verify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone: cleanPhone, otp: otpCode })
+          body: JSON.stringify({
+            phone: cleanPhone,
+            otp: otpCode,
+            sessionToken: lastPhoneOtpSessionToken
+          })
         });
         const data = await res.json();
 

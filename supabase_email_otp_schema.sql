@@ -20,9 +20,13 @@ CREATE INDEX IF NOT EXISTS idx_email_otps_expires_at ON public.email_otps(expire
 ALTER TABLE public.email_otps ENABLE ROW LEVEL SECURITY;
 
 -- Allow server backend / serverless functions to read, insert, update and delete OTP records
-CREATE POLICY "Allow service role full access to email_otps"
+DROP POLICY IF EXISTS "Allow service role full access to email_otps" ON public.email_otps;
+DROP POLICY IF EXISTS "Allow anon and service role access to email_otps" ON public.email_otps;
+
+CREATE POLICY "Allow anon and service role access to email_otps"
   ON public.email_otps
   FOR ALL
+  TO anon, authenticated, service_role
   USING (true)
   WITH CHECK (true);
 

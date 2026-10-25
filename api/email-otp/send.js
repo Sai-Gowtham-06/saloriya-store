@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { cleanEmail, hashOtp, saveOtp, getOtp, deleteOtp, sendOtpEmail } from "./_store.js";
+import { cleanEmail, hashOtp, saveOtp, getOtp, deleteOtp, sendOtpEmail, createEmailOtpSessionToken } from "./_store.js";
 
 export default async function handler(req, res) {
   // CORS & Header handling
@@ -72,7 +72,16 @@ export default async function handler(req, res) {
     const otpHash = hashOtp(normEmail, otp);
     const expiresAt = now + 5 * 60 * 1000; // 5 minutes validity
 
-    // 5. Save in memory & Supabase
+    // 5. Generate tamper-proof session token for serverless resilience
+    const sessionToken = createEmailOtpSessionToken(normEmail, otpHash, expiresAt);
+
+    // Set HTTP cookie so serverless verify calls can validate without shared memory
+    res.setHeader(
+      "Set-Cookie",
+      `__saloriya_email_otp=${encodeURIComponent(sessionToken)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=300`
+    );
+
+    // 6. Save in memory & Supabase
     await saveOtp({
       email: normEmail,
       otp,
@@ -81,7 +90,7 @@ export default async function handler(req, res) {
       requestTimestamps
     });
 
-    // 6. Send branded HTML email via Nodemailer / Resend
+    // 7. Send branded HTML email via Nodemailer / Resend
     const sendResult = await sendOtpEmail({ email: normEmail, otp });
 
     if (!sendResult.success) {
@@ -96,7 +105,8 @@ export default async function handler(req, res) {
     return res.status(200).json({
       success: true,
       message: `Verification code sent to ${normEmail}. Please check your inbox and spam folder.`,
-      cooldown: 60
+      cooldown: 60,
+      sessionToken
     });
   } catch (err) {
     console.error("Email OTP send error:", err);

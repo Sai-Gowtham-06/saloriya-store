@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { hashOtp, saveOtp, getOtp } from "./_store.js";
+import { hashOtp, saveOtp, getOtp, createPhoneOtpSessionToken } from "./_store.js";
 
 export default async function handler(req, res) {
   // CORS & method validation
@@ -158,11 +158,19 @@ export default async function handler(req, res) {
     // provide testOtp and clear explanation so testing (especially with store number 8680824598) is never blocked.
     const isTestEligible = !smsSent || cleanPhone === "8680824598" || process.env.NODE_ENV !== "production";
 
+    const sessionToken = createPhoneOtpSessionToken(cleanPhone, otpHash, expiresAt);
+
+    res.setHeader(
+      "Set-Cookie",
+      `__saloriya_phone_otp=${encodeURIComponent(sessionToken)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=300`
+    );
+
     return res.status(200).json({
       success: true,
       smsSent,
       gatewayError: gatewayError || null,
       testOtp: isTestEligible ? otp : undefined,
+      sessionToken,
       message: smsSent
         ? "OTP sent successfully to your mobile number via SMS."
         : (gatewayError || "SMS gateway requires website verification on Fast2SMS. Test OTP provided."),

@@ -21,6 +21,67 @@ export function hashOtp(email, otp) {
   return crypto.createHmac("sha256", OTP_SECRET).update(`${normEmail}:${cleanOtp}`).digest("hex");
 }
 
+export function createEmailOtpSessionToken(email, otpHash, expiresAt) {
+  const normEmail = cleanEmail(email);
+  const payload = {
+    email: normEmail,
+    otpHash,
+    exp: expiresAt,
+    iat: Date.now()
+  };
+  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = crypto.createHmac("sha256", OTP_SECRET).update(payloadB64).digest("base64url");
+  return `${payloadB64}.${signature}`;
+}
+
+export function verifyEmailOtpSessionToken(token, email, cleanOtp) {
+  if (!token || typeof token !== "string" || !token.includes(".")) {
+    return { valid: false, error: "Invalid session token format" };
+  }
+
+  const parts = token.split(".");
+  if (parts.length !== 2) {
+    return { valid: false, error: "Malformed session token" };
+  }
+
+  const [payloadB64, providedSig] = parts;
+  const expectedSig = crypto.createHmac("sha256", OTP_SECRET).update(payloadB64).digest("base64url");
+
+  const sigBuf = Buffer.from(providedSig);
+  const expBuf = Buffer.from(expectedSig);
+
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+    return { valid: false, error: "Session token signature verification failed" };
+  }
+
+  let payload;
+  try {
+    payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf8"));
+  } catch {
+    return { valid: false, error: "Could not parse session token payload" };
+  }
+
+  const normEmail = cleanEmail(email);
+  if (cleanEmail(payload.email) !== normEmail) {
+    return { valid: false, error: "Email mismatch in session token" };
+  }
+
+  const now = Date.now();
+  if (now > payload.exp) {
+    return { valid: false, error: "Verification code has expired. Please request a new code." };
+  }
+
+  const submittedHash = hashOtp(normEmail, cleanOtp);
+  const hashBuf = Buffer.from(submittedHash, "hex");
+  const expectedHashBuf = Buffer.from(payload.otpHash, "hex");
+
+  if (hashBuf.length !== expectedHashBuf.length || !crypto.timingSafeEqual(hashBuf, expectedHashBuf)) {
+    return { valid: false, error: "Incorrect verification code. Please check and try again." };
+  }
+
+  return { valid: true, payload };
+}
+
 export function generateVerificationToken(email) {
   const normEmail = cleanEmail(email);
   const timestamp = Date.now();
@@ -44,28 +105,30 @@ export async function saveOtp({ email, otp, otpHash, expiresAt, requestTimestamp
 
   globalThis.__saloriya_email_otp_store.set(normEmail, record);
 
-  // Optional non-blocking Supabase sync if credentials exist
-  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  // Supabase sync if credentials exist (awaited with short timeout so serverless doesn't terminate it)
+  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "https://ybyboplrrovrhnnunkaa.supabase.co";
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_UYmUTnaCjZ3AGFn2k4BR3A_rYGAI3am";
 
   if (supabaseUrl && supabaseServiceKey) {
-    fetch(`${supabaseUrl}/rest/v1/email_otps`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "apikey": supabaseServiceKey,
-        "Authorization": `Bearer ${supabaseServiceKey}`,
-        "Prefer": "resolution=merge-duplicates"
-      },
-      signal: AbortSignal.timeout(2000),
-      body: JSON.stringify({
-        email: normEmail,
-        otp_hash: otpHash,
-        expires_at: new Date(expiresAt).toISOString(),
-        attempts: 0,
-        last_sent_at: new Date(now).toISOString()
-      })
-    }).catch(() => {});
+    try {
+      await fetch(`${supabaseUrl}/rest/v1/email_otps`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": supabaseServiceKey,
+          "Authorization": `Bearer ${supabaseServiceKey}`,
+          "Prefer": "resolution=merge-duplicates"
+        },
+        signal: AbortSignal.timeout(2000),
+        body: JSON.stringify({
+          email: normEmail,
+          otp_hash: otpHash,
+          expires_at: new Date(expiresAt).toISOString(),
+          attempts: 0,
+          last_sent_at: new Date(now).toISOString()
+        })
+      });
+    } catch {}
   }
 
   return record;
@@ -163,11 +226,10 @@ export async function deleteOtp(email) {
 export async function sendOtpEmail({ email, otp }) {
   const normEmail = cleanEmail(email);
 
-  const smtpUser = process.env.SMTP_USER || process.env.EMAIL_USER;
-  const smtpPass = process.env.SMTP_PASS || process.env.EMAIL_PASS;
+  const smtpUser = process.env.SMTP_USER || process.env.EMAIL_USER || "saloriyaofficial@gmail.com";
+  const smtpPass = (process.env.SMTP_PASS || process.env.EMAIL_PASS || "xrybinzmuxjhcjrf").replace(/\s+/g, "");
   const smtpHost = process.env.SMTP_HOST || "smtp.gmail.com";
-  const smtpPort = parseInt(process.env.SMTP_PORT || "587", 10);
-  const isSecure = process.env.SMTP_SECURE !== undefined ? process.env.SMTP_SECURE === "true" : smtpPort === 465;
+  const configuredPort = parseInt(process.env.SMTP_PORT || "587", 10);
   const resendApiKey = process.env.RESEND_API_KEY;
 
   const htmlContent = `
@@ -244,43 +306,57 @@ export async function sendOtpEmail({ email, otp }) {
     }
   }
 
-  // 2. Try Nodemailer SMTP (Gmail App Password or custom SMTP)
+  // 2. Try Nodemailer SMTP with automatic dual-port fallback (port 587 and 465)
   if (smtpUser && smtpPass && smtpPass !== "your_gmail_app_password_here") {
-    try {
-      const cleanPass = smtpPass.replace(/\s+/g, "");
-      const transporter = nodemailer.createTransport({
-        host: smtpHost || "smtp.gmail.com",
-        port: smtpPort || 587,
-        secure: isSecure,
-        auth: {
-          user: smtpUser,
-          pass: cleanPass
-        },
-        tls: {
-          rejectUnauthorized: false
-        }
-      });
+    const rawFrom = process.env.SMTP_FROM || `"SALORIYA Official" <${smtpUser}>`;
+    const senderFrom = rawFrom.replace(/^"|"$/g, "").trim();
 
-      const rawFrom = process.env.SMTP_FROM || `"SALORIYA Official" <${smtpUser}>`;
-      const senderFrom = rawFrom.replace(/^"|"$/g, "").trim();
+    // Determine port configs to try: configured port first, alternative port second
+    const portsToTry = configuredPort === 465
+      ? [{ port: 465, secure: true }, { port: 587, secure: false }]
+      : [{ port: 587, secure: false }, { port: 465, secure: true }];
 
-      const info = await transporter.sendMail({
-        from: senderFrom,
-        to: normEmail,
-        replyTo: smtpUser,
-        subject: `💎 Your SALORIYA Order Verification Code: ${otp}`,
-        text: `Your SALORIYA order verification code is: ${otp}\n\nThis verification code is valid for 5 minutes.\n\nIf you did not initiate this order, please disregard this email. Never share your verification code with anyone.\n\n— SALORIYA Store`,
-        html: htmlContent
-      });
+    let lastError = null;
 
-      console.log(`[SALORIYA EMAIL OTP] Successfully sent code to ${normEmail} via Nodemailer (Message ID: ${info.messageId})`);
-      return { success: true, method: "nodemailer", messageId: info.messageId };
-    } catch (err) {
-      console.error("[SALORIYA EMAIL OTP] Nodemailer SMTP delivery error:", err.message);
-      return { success: false, error: err.message };
+    for (const { port, secure } of portsToTry) {
+      try {
+        const transporter = nodemailer.createTransport({
+          host: smtpHost,
+          port,
+          secure,
+          connectionTimeout: 8000,
+          greetingTimeout: 8000,
+          socketTimeout: 10000,
+          auth: {
+            user: smtpUser,
+            pass: smtpPass
+          },
+          tls: {
+            rejectUnauthorized: false
+          }
+        });
+
+        const info = await transporter.sendMail({
+          from: senderFrom,
+          to: normEmail,
+          replyTo: smtpUser,
+          subject: `💎 Your SALORIYA Order Verification Code: ${otp}`,
+          text: `Your SALORIYA order verification code is: ${otp}\n\nThis verification code is valid for 5 minutes.\n\nIf you did not initiate this order, please disregard this email. Never share your verification code with anyone.\n\n— SALORIYA Store`,
+          html: htmlContent
+        });
+
+        console.log(`[SALORIYA EMAIL OTP] Successfully sent code to ${normEmail} via Nodemailer (Port: ${port}, Message ID: ${info.messageId})`);
+        return { success: true, method: "nodemailer", messageId: info.messageId };
+      } catch (err) {
+        lastError = err;
+        console.warn(`[SALORIYA EMAIL OTP] Nodemailer attempt on port ${port} failed (${err.message}), trying next port fallback...`);
+      }
     }
+
+    console.error("[SALORIYA EMAIL OTP] All SMTP attempts failed:", lastError?.message);
+    return { success: false, error: lastError?.message || "Failed to deliver email through SMTP." };
   } else {
-    console.warn(`[SALORIYA EMAIL OTP NOTICE] Real email could not be sent to ${normEmail} because SMTP_USER and SMTP_PASS are not configured in .env.local.`);
+    console.warn(`[SALORIYA EMAIL OTP NOTICE] Real email could not be sent to ${normEmail} because SMTP_USER and SMTP_PASS are not configured.`);
   }
 
   // 3. Fallback / Dev Mode Logging

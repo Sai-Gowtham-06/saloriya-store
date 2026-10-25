@@ -1,5 +1,11 @@
 import crypto from "crypto";
-import { hashOtp, getOtp, deleteOtp, incrementAttempts, OTP_SECRET } from "./_store.js";
+import { hashOtp, getOtp, deleteOtp, incrementAttempts, OTP_SECRET, verifyPhoneOtpSessionToken } from "./_store.js";
+
+function parseCookie(cookieHeader, name) {
+  if (!cookieHeader) return null;
+  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -15,7 +21,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { phone, otp } = req.body || {};
+    const { phone, otp, sessionToken: bodyToken } = req.body || {};
 
     const cleanPhone = String(phone || "").replace(/\D/g, "");
     const cleanOtp = String(otp || "").trim();
@@ -28,6 +34,50 @@ export default async function handler(req, res) {
       return res.status(400).json({ success: false, error: "Please enter a valid 6-digit numeric OTP code." });
     }
 
+    const sessionToken = bodyToken || parseCookie(req.headers.cookie, "__saloriya_phone_otp");
+
+    // 1. Primary: Stateless Session Token verification (Serverless-safe & 100% reliable)
+    if (sessionToken) {
+      const tokenResult = verifyPhoneOtpSessionToken(sessionToken, cleanPhone, cleanOtp);
+
+      if (tokenResult.valid) {
+        res.setHeader("Set-Cookie", "__saloriya_phone_otp=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT");
+        deleteOtp(cleanPhone).catch(() => {});
+
+        const now = Date.now();
+        const tokenPayload = {
+          phone: cleanPhone,
+          verified: true,
+          timestamp: now,
+          exp: now + 15 * 60 * 1000
+        };
+        const payloadB64 = Buffer.from(JSON.stringify(tokenPayload)).toString("base64url");
+        const signature = crypto.createHmac("sha256", OTP_SECRET).update(payloadB64).digest("base64url");
+        const signedVerificationToken = `${payloadB64}.${signature}`;
+
+        return res.status(200).json({
+          success: true,
+          verified: true,
+          message: "Phone number verified successfully ✓",
+          phone: cleanPhone,
+          token: signedVerificationToken
+        });
+      }
+
+      if (tokenResult.error && tokenResult.error.includes("Incorrect OTP")) {
+        return res.status(400).json({
+          success: false,
+          error: "Incorrect OTP. Please try again."
+        });
+      } else if (tokenResult.error && tokenResult.error.includes("expired")) {
+        return res.status(400).json({
+          success: false,
+          error: "OTP has expired. Please tap 'Resend OTP' to receive a new code."
+        });
+      }
+    }
+
+    // 2. Secondary: Check In-Memory Map / Supabase database
     const now = Date.now();
     const record = await getOtp(cleanPhone);
 

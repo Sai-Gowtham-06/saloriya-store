@@ -20,9 +20,13 @@ CREATE INDEX IF NOT EXISTS idx_phone_otps_expires_at ON public.phone_otps(expire
 ALTER TABLE public.phone_otps ENABLE ROW LEVEL SECURITY;
 
 -- Allow serverless backend with anon/service key to read/insert/update/delete OTP records
-CREATE POLICY "Allow service role full access to phone_otps"
+DROP POLICY IF EXISTS "Allow service role full access to phone_otps" ON public.phone_otps;
+DROP POLICY IF EXISTS "Allow anon and service role access to phone_otps" ON public.phone_otps;
+
+CREATE POLICY "Allow anon and service role access to phone_otps"
   ON public.phone_otps
   FOR ALL
+  TO anon, authenticated, service_role
   USING (true)
   WITH CHECK (true);
 

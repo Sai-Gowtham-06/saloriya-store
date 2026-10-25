@@ -47,6 +47,7 @@ export default function CheckoutModal() {
   const otpPanelRef = useRef(null);
   const dialogRef = useRef(null);
   const activeCheckoutIdRef = useRef(null);
+  const otpSessionTokenRef = useRef("");
 
   const handleCloseCheckout = () => {
     setConfirmedOrder(null);
@@ -67,6 +68,7 @@ export default function CheckoutModal() {
         setQty(1);
         setIsEmailVerified(false);
         setEmailToken("");
+        otpSessionTokenRef.current = "";
         setShowOtpPanel(false);
         setOtpCode("");
         setAppliedPromo(null);
@@ -151,6 +153,7 @@ export default function CheckoutModal() {
       setShowOtpPanel(true);
       setOtpCooldown(data.cooldown || 60);
       setOtpCode(""); // Always empty so customer enters the code received in their email
+      otpSessionTokenRef.current = data.sessionToken || "";
 
       setOtpNotice({
         type: "success",
@@ -182,7 +185,11 @@ export default function CheckoutModal() {
       const res = await fetch("/api/email-otp/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: cleanEmail, otp: cleanCode })
+        body: JSON.stringify({
+          email: cleanEmail,
+          otp: cleanCode,
+          sessionToken: otpSessionTokenRef.current
+        })
       });
       const data = await res.json();
 
@@ -306,7 +313,11 @@ export default function CheckoutModal() {
             const res = await fetch("/api/email-otp/verify", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ email: cleanEmail, otp: cleanCode })
+              body: JSON.stringify({
+                email: cleanEmail,
+                otp: cleanCode,
+                sessionToken: otpSessionTokenRef.current
+              })
             });
             const data = await res.json();
             if (res.ok && data.success) {

@@ -1,5 +1,11 @@
 import crypto from "crypto";
-import { cleanEmail, hashOtp, getOtp, deleteOtp, incrementAttempts, generateVerificationToken } from "./_store.js";
+import { cleanEmail, hashOtp, getOtp, deleteOtp, incrementAttempts, generateVerificationToken, verifyEmailOtpSessionToken } from "./_store.js";
+
+function parseCookie(cookieHeader, name) {
+  if (!cookieHeader) return null;
+  const match = cookieHeader.match(new RegExp(`(?:^|;\\s*)${name}=([^;]+)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -15,7 +21,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { email, otp } = req.body || {};
+    const { email, otp, sessionToken: bodyToken } = req.body || {};
 
     const normEmail = cleanEmail(email);
     const cleanOtp = String(otp || "").trim();
@@ -28,6 +34,43 @@ export default async function handler(req, res) {
       return res.status(400).json({ success: false, error: "Please enter a valid 6-digit verification code." });
     }
 
+    const sessionToken = bodyToken || parseCookie(req.headers.cookie, "__saloriya_email_otp");
+
+    // 1. Primary: Stateless Session Token verification (Serverless-safe & 100% reliable)
+    if (sessionToken) {
+      const tokenResult = verifyEmailOtpSessionToken(sessionToken, normEmail, cleanOtp);
+
+      if (tokenResult.valid) {
+        // Clear cookie to prevent replay
+        res.setHeader("Set-Cookie", "__saloriya_email_otp=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT");
+        // Also cleanup memory/DB record asynchronously
+        deleteOtp(normEmail).catch(() => {});
+
+        const token = generateVerificationToken(normEmail);
+        return res.status(200).json({
+          success: true,
+          message: "Email verified successfully.",
+          email: normEmail,
+          token
+        });
+      }
+
+      // If token was present and had a specific validation error:
+      if (tokenResult.error && tokenResult.error.includes("verification code")) {
+        return res.status(400).json({
+          success: false,
+          error: "Incorrect verification code. Please check and try again."
+        });
+      } else if (tokenResult.error && tokenResult.error.includes("expired")) {
+        return res.status(400).json({
+          success: false,
+          error: "Verification code has expired. Please request a new code."
+        });
+      }
+      // If signature failed or mismatch, fall through to check memory/database
+    }
+
+    // 2. Secondary: Check In-Memory Map / Supabase database
     const now = Date.now();
     const record = await getOtp(normEmail);
 
@@ -38,7 +81,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // 1. Expiration check (5 minutes validity)
+    // Expiration check (5 minutes validity)
     if (now > record.expiresAt) {
       await deleteOtp(normEmail);
       return res.status(400).json({
@@ -47,7 +90,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // 2. Maximum attempts check (Invalidate after 3 failed attempts)
+    // Maximum attempts check (Invalidate after 3 failed attempts)
     const currentAttempts = Number(record.attempts || 0);
     if (currentAttempts >= 3) {
       await deleteOtp(normEmail);
@@ -57,7 +100,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // 3. Cryptographic hash comparison with timing-safe comparison
+    // Cryptographic hash comparison with timing-safe comparison
     const submittedHash = hashOtp(normEmail, cleanOtp);
     const expectedHash = record.otpHash;
 
@@ -79,10 +122,11 @@ export default async function handler(req, res) {
       });
     }
 
-    // 4. Invalidate OTP record immediately to prevent replay attacks
+    // Invalidate OTP record immediately to prevent replay attacks
     await deleteOtp(normEmail);
+    res.setHeader("Set-Cookie", "__saloriya_email_otp=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT");
 
-    // 5. Generate secure, cryptographically signed verification token
+    // Generate secure, cryptographically signed verification token
     const token = generateVerificationToken(normEmail);
 
     return res.status(200).json({

@@ -213,11 +213,14 @@ function vercelApiDevPlugin() {
 
           // DELETE /api/orders/:id
           if (req.method === "DELETE") {
-            const parts = url.split("/");
-            const id = parts[parts.length - 1];
-            let orders = readOrders();
-            orders = orders.filter((o) => o.order_id !== id && o.id !== id);
-            writeOrders(orders);
+            const parts = url.split("/").filter(Boolean);
+            const pathId = parts.length >= 3 && parts[1] === "orders" ? decodeURIComponent(parts[2]) : null;
+            const targetId = pathId || body.id || body.order_id;
+            if (targetId && targetId !== "orders") {
+              let orders = readOrders();
+              orders = orders.filter((o) => o && o.order_id !== targetId && o.id !== targetId);
+              writeOrders(orders);
+            }
             return res.json({ success: true, message: "Order deleted" });
           }
         }

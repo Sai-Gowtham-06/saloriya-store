@@ -80,7 +80,15 @@ export default function AdminRecordOrderModal({ isOpen, onClose, products, onOrd
     // 2. Save to Supabase
     try {
       if (isSupabaseConfigured) {
-        await supabase.from("orders").insert([orderPayload]);
+        const sbPayload = {
+          ...orderPayload,
+          phone: orderPayload.customer_phone,
+          customer_phone: orderPayload.customer_phone,
+          order_status: orderStatus,
+          payment_status: paymentMethod === "prepaid" ? "paid" : "pending",
+          address: { full: address.trim() }
+        };
+        await supabase.from("orders").insert([sbPayload]);
         if (orderStatus === "confirmed") {
           const newStock = Math.max(0, (selectedProduct.stock || 0) - qty);
           await supabase.from("products").update({ stock: newStock }).eq("id", selectedProduct.id);

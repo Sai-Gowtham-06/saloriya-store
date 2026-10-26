@@ -38,10 +38,14 @@ export default function AdminPage() {
 
   const getDeletedOrderIds = () => {
     try {
-      return JSON.parse(localStorage.getItem("saloriya_deleted_order_ids") || "[]");
+      const raw = JSON.parse(localStorage.getItem("saloriya_deleted_order_ids") || "[]");
+      if (Array.isArray(raw)) {
+        return raw.filter((d) => d && d !== "undefined" && d !== "null" && typeof d === "string" && d.trim() !== "");
+      }
     } catch (e) {
       return [];
     }
+    return [];
   };
 
   const loadOrders = async () => {
@@ -86,9 +90,18 @@ export default function AdminPage() {
     // Merge and deduplicate across Central API, Supabase, and localStorage
     const mergedMap = new Map();
     [...apiList, ...sbList, ...localList].forEach((o) => {
-      const key = String(o.order_id || o.id);
-      if (key && !mergedMap.has(key)) {
-        mergedMap.set(key, o);
+      if (!o) return;
+      const key = (o.order_id && String(o.order_id).trim()) || (o.id && String(o.id).trim());
+      if (key && key !== "undefined" && key !== "null") {
+        if (!mergedMap.has(key)) {
+          mergedMap.set(key, o);
+        }
+      } else {
+        const fallbackKey = `order_${mergedMap.size}_${o.created_at || Date.now()}`;
+        mergedMap.set(fallbackKey, {
+          ...o,
+          order_id: o.order_id || `SLR-${Date.now().toString().slice(-6)}`
+        });
       }
     });
 
@@ -97,10 +110,10 @@ export default function AdminPage() {
     const deletedIds = getDeletedOrderIds();
     if (deletedIds.length > 0) {
       list = list.filter((o) => {
-        const oid = o.order_id ? String(o.order_id) : null;
-        const uid = o.id ? String(o.id) : null;
-        if (oid && deletedIds.some((d) => String(d) === oid)) return false;
-        if (uid && deletedIds.some((d) => String(d) === uid)) return false;
+        const oid = o.order_id ? String(o.order_id).trim() : null;
+        const uid = o.id ? String(o.id).trim() : null;
+        if (oid && deletedIds.includes(oid)) return false;
+        if (uid && deletedIds.includes(uid)) return false;
         return true;
       });
     }
@@ -108,6 +121,7 @@ export default function AdminPage() {
     // Keep localStorage synchronized with latest unified list
     try {
       localStorage.setItem("saloriya_admin_orders", JSON.stringify(list));
+      localStorage.setItem("saloriya_deleted_order_ids", JSON.stringify(deletedIds));
     } catch (e) {}
 
     setOrders(list);
@@ -215,7 +229,7 @@ export default function AdminPage() {
               className={`admin-tab ${activeTab === "products" ? "active" : ""}`}
               onClick={() => setActiveTab("products")}
             >
-              <span className="tab-icon"></span>
+              <span className="tab-icon">✨</span>
               <span>Product Studio</span>
             </button>
             <button

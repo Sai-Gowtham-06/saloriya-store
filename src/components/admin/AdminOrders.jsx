@@ -20,10 +20,12 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
     }).format((paise || 0) / 100);
   };
 
-  const handleStatusChange = async (orderId, newStatus) => {
+  const handleStatusChange = async (targetOrderId, newStatus) => {
+    if (!targetOrderId) return;
+
     // 1. Update Central Orders API
     try {
-      await fetch(`/api/orders/${orderId}/status`, {
+      await fetch(`/api/orders/${encodeURIComponent(targetOrderId)}/status`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus })
@@ -35,7 +37,10 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
     // 2. Update Supabase
     try {
       if (isSupabaseConfigured) {
-        await supabase.from("orders").update({ status: newStatus, order_status: newStatus }).eq("order_id", orderId);
+        await supabase
+          .from("orders")
+          .update({ status: newStatus, order_status: newStatus })
+          .or(`order_id.eq.${targetOrderId},id.eq.${targetOrderId}`);
       }
     } catch (e) {
       console.warn("Supabase update error:", e);
@@ -44,10 +49,14 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
     // 3. Update localStorage
     try {
       const local = JSON.parse(localStorage.getItem("saloriya_admin_orders") || "[]");
-      const idx = local.findIndex((o) => o.order_id === orderId);
-      if (idx !== -1) {
-        local[idx].status = newStatus;
-        localStorage.setItem("saloriya_admin_orders", JSON.stringify(local));
+      if (Array.isArray(local)) {
+        const idx = local.findIndex(
+          (o) => (o.order_id && o.order_id === targetOrderId) || (o.id && o.id === targetOrderId)
+        );
+        if (idx !== -1) {
+          local[idx].status = newStatus;
+          localStorage.setItem("saloriya_admin_orders", JSON.stringify(local));
+        }
       }
     } catch (e) {}
 
@@ -57,49 +66,61 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
   const executeDeleteOrder = async (order) => {
     if (!order) return;
     setIsDeletingOrder(true);
-    const orderId = order.order_id || order.id;
-    const dbId = order.id;
+    const targetOrderId = order.order_id ? String(order.order_id).trim() : null;
+    const targetDbId = order.id ? String(order.id).trim() : null;
+    const identifier = targetOrderId || targetDbId;
 
-    // 1. Add to deleted tracking list
+    if (!identifier) {
+      setIsDeletingOrder(false);
+      setDeleteTargetOrder(null);
+      return;
+    }
+
+    // 1. Add valid ID(s) to deleted tracking list
     try {
-      const deleted = JSON.parse(localStorage.getItem("saloriya_deleted_order_ids") || "[]");
-      [orderId, dbId].forEach((val) => {
-        if (val && !deleted.includes(String(val))) {
-          deleted.push(String(val));
-        }
-      });
+      const rawDeleted = JSON.parse(localStorage.getItem("saloriya_deleted_order_ids") || "[]");
+      const deleted = Array.isArray(rawDeleted)
+        ? rawDeleted.filter((d) => d && d !== "undefined" && d !== "null" && typeof d === "string" && d.trim())
+        : [];
+      if (targetOrderId && !deleted.includes(targetOrderId)) deleted.push(targetOrderId);
+      if (targetDbId && !deleted.includes(targetDbId)) deleted.push(targetDbId);
       localStorage.setItem("saloriya_deleted_order_ids", JSON.stringify(deleted));
     } catch (e) {}
 
     // 2. Remove from Central Orders API
     try {
-      if (orderId) await fetch(`/api/orders/${orderId}`, { method: "DELETE" });
-      if (dbId && dbId !== orderId) await fetch(`/api/orders/${dbId}`, { method: "DELETE" });
+      if (targetOrderId) {
+        await fetch(`/api/orders/${encodeURIComponent(targetOrderId)}`, { method: "DELETE" });
+      }
+      if (targetDbId && targetDbId !== targetOrderId) {
+        await fetch(`/api/orders/${encodeURIComponent(targetDbId)}`, { method: "DELETE" });
+      }
     } catch (apiErr) {
       console.warn("Central API delete error:", apiErr);
     }
 
-    // 3. Remove from localStorage
+    // 3. Remove precisely ONLY this target order from localStorage
     try {
       const local = JSON.parse(localStorage.getItem("saloriya_admin_orders") || "[]");
-      const filtered = local.filter((o) => {
-        const oid = o.order_id || o.id;
-        const uid = o.id;
-        return (
-          String(oid) !== String(orderId) &&
-          String(oid) !== String(dbId) &&
-          String(uid) !== String(orderId) &&
-          String(uid) !== String(dbId)
-        );
-      });
-      localStorage.setItem("saloriya_admin_orders", JSON.stringify(filtered));
+      if (Array.isArray(local)) {
+        const filtered = local.filter((o) => {
+          if (!o) return false;
+          const currOrderId = o.order_id ? String(o.order_id).trim() : null;
+          const currDbId = o.id ? String(o.id).trim() : null;
+          const isTarget =
+            (targetOrderId && (currOrderId === targetOrderId || currDbId === targetOrderId)) ||
+            (targetDbId && (currOrderId === targetDbId || currDbId === targetDbId));
+          return !isTarget;
+        });
+        localStorage.setItem("saloriya_admin_orders", JSON.stringify(filtered));
+      }
     } catch (e) {}
 
     // 4. Delete from Supabase
     try {
       if (isSupabaseConfigured) {
-        if (order.order_id) await supabase.from("orders").delete().eq("order_id", order.order_id);
-        if (order.id) await supabase.from("orders").delete().eq("id", order.id);
+        if (targetOrderId) await supabase.from("orders").delete().eq("order_id", targetOrderId);
+        if (targetDbId && targetDbId !== targetOrderId) await supabase.from("orders").delete().eq("id", targetDbId);
       }
     } catch (e) {
       console.warn("Supabase delete order:", e);
@@ -107,7 +128,7 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
 
     setIsDeletingOrder(false);
     setDeleteTargetOrder(null);
-    setOrderToast(`✓ Order #${orderId} deleted successfully`);
+    setOrderToast(`✓ Order #${identifier} deleted successfully`);
     setTimeout(() => setOrderToast(""), 3500);
 
     if (onOrderUpdated) onOrderUpdated();
@@ -258,22 +279,27 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
             <p className="hint">Try switching payment tab or clearing search filters.</p>
           </div>
         ) : (
-          filteredOrders.map((order) => {
+          filteredOrders.map((order, idx) => {
             const isPrepaid = order.payment_method === "prepaid";
             const status = order.status || "confirmed";
+            const orderKey = order.order_id || order.id || `order_${idx}`;
+            const formattedDate = (() => {
+              if (!order.created_at) return "Recently placed";
+              const d = new Date(order.created_at);
+              return isNaN(d.getTime())
+                ? "Recently placed"
+                : d.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
+            })();
 
             return (
-              <div key={order.order_id} className="order-card">
+              <div key={orderKey} className="order-card">
                 <div className="order-card-header">
                   <div className="order-header-left">
                     <span className="order-id-badge" title="Order ID">
-                      #{order.order_id}
+                      #{order.order_id || order.id || "SLR"}
                     </span>
                     <span className="order-date">
-                      {new Date(order.created_at).toLocaleString("en-IN", {
-                        dateStyle: "medium",
-                        timeStyle: "short"
-                      })}
+                      {formattedDate}
                     </span>
                   </div>
 
@@ -422,7 +448,7 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
                     <span style={{ fontSize: "11px", color: "var(--muted)", fontWeight: 600 }}>Status:</span>
                     <select
                       value={status}
-                      onChange={(e) => handleStatusChange(order.order_id, e.target.value)}
+                      onChange={(e) => handleStatusChange(order.order_id || order.id, e.target.value)}
                       style={{
                         padding: "5px 10px",
                         fontSize: "11.5px",

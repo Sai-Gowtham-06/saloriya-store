@@ -227,7 +227,7 @@ export default async function handler(req, res) {
 
       if (SUPABASE_URL && SUPABASE_KEY) {
         try {
-          await fetch(`${SUPABASE_URL}/rest/v1/orders?order_id=eq.${encodeURIComponent(targetId)}`, {
+          await fetch(`${SUPABASE_URL}/rest/v1/orders?or=(order_id.eq.${encodeURIComponent(targetId)},id.eq.${encodeURIComponent(targetId)})`, {
             method: "DELETE",
             headers: {
               apikey: SUPABASE_KEY,

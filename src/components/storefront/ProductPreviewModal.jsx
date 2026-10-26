@@ -65,15 +65,23 @@ export default function ProductPreviewModal() {
   const isOutOfStock = (product.stock || 0) <= 0;
   const categoryName = product.category || "GOLD COVERING";
 
+  const isTouchDevice = () => {
+    if (typeof window === "undefined" || !window.matchMedia) return false;
+    return window.matchMedia("(hover: none)").matches || window.matchMedia("(pointer: coarse)").matches;
+  };
+
   const handleMouseMove = (e) => {
-    if (!mainImgRef.current) return;
+    // Disable disruptive hover zoom on touch devices
+    if (isTouchDevice() || !mainImgRef.current) return;
     const rect = e.currentTarget.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
     const x = (((e.clientX - rect.left) / rect.width) * 100).toFixed(1);
     const y = (((e.clientY - rect.top) / rect.height) * 100).toFixed(1);
     zoomIn(x, y);
   };
 
   const handleMouseLeave = () => {
+    if (isTouchDevice()) return;
     zoomOut();
   };
 
@@ -83,11 +91,13 @@ export default function ProductPreviewModal() {
       zoomOut();
     } else {
       const rect = e.currentTarget.getBoundingClientRect();
-      const clientX = e.clientX || (e.changedTouches && e.changedTouches[0]?.clientX);
-      const clientY = e.clientY || (e.changedTouches && e.changedTouches[0]?.clientY);
-      if (clientX !== undefined && clientY !== undefined) {
-        const x = (((clientX - rect.left) / rect.width) * 100).toFixed(1);
-        const y = (((clientY - rect.top) / rect.height) * 100).toFixed(1);
+      const clientX = e.clientX ?? e.changedTouches?.[0]?.clientX;
+      const clientY = e.clientY ?? e.changedTouches?.[0]?.clientY;
+      if (clientX !== undefined && clientY !== undefined && rect.width > 0 && rect.height > 0) {
+        const rawX = ((clientX - rect.left) / rect.width) * 100;
+        const rawY = ((clientY - rect.top) / rect.height) * 100;
+        const x = Math.max(10, Math.min(90, rawX)).toFixed(1);
+        const y = Math.max(10, Math.min(90, rawY)).toFixed(1);
         zoomIn(x, y);
       } else {
         zoomIn(50, 50);
@@ -96,12 +106,14 @@ export default function ProductPreviewModal() {
   };
 
   const handleTouchMove = (e) => {
-    if (e.touches && e.touches.length === 1 && isZoomed) {
+    if (e.touches && e.touches.length === 1 && isZoomed && mainImgRef.current) {
       const touch = e.touches[0];
       const rect = e.currentTarget.getBoundingClientRect();
-      const x = Math.max(0, Math.min(100, ((touch.clientX - rect.left) / rect.width) * 100)).toFixed(1);
-      const y = Math.max(0, Math.min(100, ((touch.clientY - rect.top) / rect.height) * 100)).toFixed(1);
-      zoomIn(x, y);
+      if (rect.width > 0 && rect.height > 0) {
+        const x = Math.max(10, Math.min(90, ((touch.clientX - rect.left) / rect.width) * 100)).toFixed(1);
+        const y = Math.max(10, Math.min(90, ((touch.clientY - rect.top) / rect.height) * 100)).toFixed(1);
+        zoomIn(x, y);
+      }
     }
   };
 

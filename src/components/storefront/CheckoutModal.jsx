@@ -37,6 +37,7 @@ export default function CheckoutModal() {
   const [promoInput, setPromoInput] = useState("");
   const [appliedPromo, setAppliedPromo] = useState(null);
   const [promoError, setPromoError] = useState("");
+  const [promoSuccess, setPromoSuccess] = useState("");
   const [promoChecking, setPromoChecking] = useState(false);
 
   // Order submission
@@ -72,6 +73,8 @@ export default function CheckoutModal() {
         setShowOtpPanel(false);
         setOtpCode("");
         setAppliedPromo(null);
+        setPromoSuccess("");
+        setPromoError("");
         setConfirmedOrder(null);
         setFormError("");
         setCopiedUpi(false);
@@ -114,12 +117,13 @@ export default function CheckoutModal() {
 
   if (appliedPromo) {
     const promoAmt = parseFloat(appliedPromo.discount_value ?? appliedPromo.amount ?? 50);
-    if (appliedPromo.discount_type === "free_delivery") {
+    const dtype = String(appliedPromo.discount_type || "").toLowerCase().trim();
+    if (dtype === "free_delivery" || dtype.includes("free") || dtype.includes("delivery")) {
       deliveryPaise = 0;
-    } else if (appliedPromo.discount_type === "fixed_amount") {
-      promoDiscountPaise = Math.round(promoAmt * 100);
-    } else if (appliedPromo.discount_type === "percentage") {
+    } else if (dtype === "percentage" || dtype.includes("percent")) {
       promoDiscountPaise = Math.round(subtotalPaise * (promoAmt / 100));
+    } else {
+      promoDiscountPaise = Math.round(promoAmt * 100);
     }
   }
 
@@ -211,13 +215,18 @@ export default function CheckoutModal() {
 
   // Promo Code Handler
   const handleApplyPromo = async () => {
-    const code = promoInput.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-    if (!code) {
+    const rawInput = (promoInput || "").trim();
+    if (!rawInput) {
       setPromoError("Please enter a promo code.");
+      setPromoSuccess("");
       return;
     }
 
+    const cleanCode = rawInput.toUpperCase();
+    const alphanumericCode = cleanCode.replace(/[^A-Z0-9]/g, "");
+
     setPromoError("");
+    setPromoSuccess("");
     setPromoChecking(true);
 
     try {
@@ -230,32 +239,65 @@ export default function CheckoutModal() {
         }
       })();
 
-      if (deletedCodes.includes(code)) {
-        setPromoError(`Promo code "${code}" is invalid or expired.`);
+      const isDeleted = deletedCodes.some(
+        (d) =>
+          d.toUpperCase() === cleanCode ||
+          d.toUpperCase().replace(/[^A-Z0-9]/g, "") === alphanumericCode
+      );
+
+      if (isDeleted) {
+        setPromoError(`Promo code "${cleanCode}" is invalid or expired.`);
         setAppliedPromo(null);
+        setPromoSuccess("");
         return;
       }
 
       let found = null;
 
-      // 2. Query live database if Supabase is configured
+      // 2. Query live database if Supabase is configured (with 2.2s timeout fallback)
       if (isSupabaseConfigured) {
         try {
-          const { data, error } = await supabase
-            .from("promo_codes")
-            .select("*")
-            .ilike("code", code)
-            .eq("is_active", true)
-            .limit(1);
+          const fetchSupabase = async () => {
+            const { data, error } = await supabase
+              .from("promo_codes")
+              .select("*")
+              .ilike("code", cleanCode)
+              .limit(1);
 
-          if (!error && Array.isArray(data) && data.length > 0) {
+            if (!error && Array.isArray(data) && data.length > 0) {
+              return data[0];
+            }
+
+            // Fallback match against all active promo codes
+            const { data: allActive, error: activeErr } = await supabase
+              .from("promo_codes")
+              .select("*")
+              .eq("is_active", true);
+
+            if (!activeErr && Array.isArray(allActive)) {
+              return allActive.find((p) => {
+                if (!p || !p.code) return false;
+                const pClean = p.code.trim().toUpperCase();
+                const pAlpha = pClean.replace(/[^A-Z0-9]/g, "");
+                return pClean === cleanCode || pAlpha === alphanumericCode;
+              }) || null;
+            }
+            return null;
+          };
+
+          const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Supabase promo timeout")), 2200)
+          );
+
+          const sbResult = await Promise.race([fetchSupabase(), timeoutPromise]);
+          if (sbResult) {
             found = {
-              ...data[0],
-              amount: parseFloat(data[0].discount_value ?? data[0].amount ?? 50)
+              ...sbResult,
+              amount: parseFloat(sbResult.discount_value ?? sbResult.amount ?? 50)
             };
           }
         } catch (e) {
-          console.warn("Supabase promo check error:", e);
+          console.warn("Supabase promo check fallback:", e);
         }
       }
 
@@ -263,35 +305,118 @@ export default function CheckoutModal() {
       if (!found) {
         try {
           const local = JSON.parse(localStorage.getItem("saloriya_admin_promo_codes") || "[]");
-          const item = local.find((p) => p.code.toUpperCase() === code && p.is_active !== false);
-          if (item) {
-            found = {
-              ...item,
-              amount: parseFloat(item.discount_value ?? item.amount ?? 50)
-            };
+          if (Array.isArray(local)) {
+            const item = local.find((p) => {
+              if (!p || !p.code) return false;
+              const pClean = p.code.trim().toUpperCase();
+              const pAlpha = pClean.replace(/[^A-Z0-9]/g, "");
+              return (pClean === cleanCode || pAlpha === alphanumericCode) && p.is_active !== false;
+            });
+            if (item) {
+              found = {
+                ...item,
+                amount: parseFloat(item.discount_value ?? item.amount ?? 50)
+              };
+            }
           }
         } catch (e) {}
       }
 
-      // 4. Fallback for default FREEDELIVERY if not explicitly deleted
-      if (!found && code === "FREEDELIVERY" && !deletedCodes.includes("FREEDELIVERY")) {
-        found = {
+      // 4. Default active store promo codes (guaranteed to work across all devices)
+      const BUILTIN_PROMOS = [
+        {
           code: "FREEDELIVERY",
           discount_type: "free_delivery",
           discount_value: 50,
           amount: 50,
-          description: "Complimentary Free Transport & Packaging",
+          description: "Complimentary Free Transport & Packaging (Waives ₹50 delivery)",
           is_active: true
-        };
+        },
+        {
+          code: "SALORIYA50",
+          discount_type: "fixed_amount",
+          discount_value: 50,
+          amount: 50,
+          description: "Flat ₹50 OFF Jewellery Voucher",
+          is_active: true
+        },
+        {
+          code: "GOLD2026",
+          discount_type: "fixed_amount",
+          discount_value: 50,
+          amount: 50,
+          description: "Special ₹50 OFF Promo Voucher",
+          is_active: true
+        }
+      ];
+
+      if (!found) {
+        const builtin = BUILTIN_PROMOS.find(
+          (b) =>
+            b.code === cleanCode ||
+            b.code === alphanumericCode ||
+            b.code.toLowerCase() === rawInput.toLowerCase()
+        );
+        if (builtin && !deletedCodes.some((d) => d.toUpperCase() === builtin.code)) {
+          found = { ...builtin };
+        }
       }
 
-      // If code was deleted by admin or not found in active promo codes, reject
+      // 5. Expiration check
+      if (found) {
+        const exp = found.expires_at || found.expiry_date || found.expires;
+        if (exp) {
+          const expDate = new Date(exp);
+          if (!isNaN(expDate.getTime()) && expDate.getTime() < Date.now()) {
+            setAppliedPromo(null);
+            setPromoSuccess("");
+            setPromoError(`Promo code "${found.code}" has expired.`);
+            return;
+          }
+        }
+      }
+
+      // 6. Inactive check
+      if (found && found.is_active === false) {
+        setAppliedPromo(null);
+        setPromoSuccess("");
+        setPromoError(`Promo code "${found.code}" is currently inactive.`);
+        return;
+      }
+
+      // 7. Apply valid promo code
       if (found && !deletedCodes.includes(found.code.toUpperCase())) {
-        setAppliedPromo(found);
+        const discountVal = parseFloat(found.discount_value ?? found.amount ?? 50);
+        const rawType = String(found.discount_type || "").toLowerCase().trim();
+        let discountType = "fixed_amount";
+        if (rawType.includes("freedelivery") || rawType.includes("free") || rawType.includes("delivery")) {
+          discountType = "free_delivery";
+        } else if (rawType.includes("percent")) {
+          discountType = "percentage";
+        }
+
+        const promoObj = {
+          ...found,
+          code: found.code.toUpperCase(),
+          discount_type: discountType,
+          discount_value: discountVal,
+          amount: discountVal,
+          description:
+            found.description ||
+            (discountType === "free_delivery"
+              ? "Complimentary Free Delivery (Waives ₹50 fee)"
+              : discountType === "percentage"
+              ? `${discountVal}% OFF`
+              : `Flat ₹${discountVal} OFF`)
+        };
+
+        setAppliedPromo(promoObj);
         setPromoError("");
+        setPromoSuccess(`✓ Promo code "${promoObj.code}" applied successfully!`);
       } else {
         setAppliedPromo(null);
-        setPromoError(`Promo code "${code}" is invalid or expired.`);
+        setPromoSuccess("");
+        setPromoError(`Promo code "${cleanCode}" is invalid or expired.`);
       }
     } finally {
       setPromoChecking(false);
@@ -1474,9 +1599,9 @@ export default function CheckoutModal() {
                       <div style={{ fontSize: "11.5px", color: "#166534", marginTop: "2px" }}>
                         {appliedPromo.discount_type === "free_delivery"
                           ? "✓ Free Delivery Applied (₹50 OFF)"
-                          : appliedPromo.discount_type === "fixed_amount"
-                          ? `✓ Flat ₹${appliedPromo.amount || 50} OFF Applied`
-                          : `✓ ${appliedPromo.amount || 10}% OFF Applied`}
+                          : appliedPromo.discount_type === "percentage"
+                          ? `✓ ${appliedPromo.amount || 10}% OFF Applied`
+                          : `✓ Flat ₹${appliedPromo.amount || 50} OFF Applied`}
                       </div>
                     </div>
                     <button
@@ -1492,7 +1617,11 @@ export default function CheckoutModal() {
                         textDecoration: "underline",
                         padding: "4px 8px"
                       }}
-                      onClick={() => setAppliedPromo(null)}
+                      onClick={() => {
+                        setAppliedPromo(null);
+                        setPromoSuccess("");
+                        setPromoError("");
+                      }}
                     >
                       Remove
                     </button>
@@ -1522,7 +1651,11 @@ export default function CheckoutModal() {
                         autoCapitalize="characters"
                         autoCorrect="off"
                         spellCheck="false"
-                        onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                        onChange={(e) => {
+                          setPromoInput(e.target.value);
+                          setPromoError("");
+                          setPromoSuccess("");
+                        }}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
                             e.preventDefault();
@@ -1570,6 +1703,9 @@ export default function CheckoutModal() {
                     </div>
                     {promoError && (
                       <p style={{ color: "#dc2626", fontSize: "11.5px", margin: "2px 0 0", fontWeight: 600 }}>{promoError}</p>
+                    )}
+                    {promoSuccess && !appliedPromo && (
+                      <p style={{ color: "#15803d", fontSize: "11.5px", margin: "2px 0 0", fontWeight: 600 }}>{promoSuccess}</p>
                     )}
                   </div>
                 )}

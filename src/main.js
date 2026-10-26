@@ -1089,11 +1089,27 @@ function openCheckoutModal(productId, initialColour = "") {
       }
 
       if (matchedPromo) {
+        const val = parseFloat(matchedPromo.discount_value ?? matchedPromo.amount ?? 50);
+        const dtype = String(matchedPromo.discount_type || "").toLowerCase().trim();
+        let discountPaise = 5000;
+        let dType = "fixed_amount";
+        if (dtype === "free_delivery" || dtype.includes("free") || dtype.includes("delivery")) {
+          dType = "free_delivery";
+          discountPaise = 5000;
+        } else if (dtype === "percentage" || dtype.includes("percent")) {
+          dType = "percentage";
+          discountPaise = Math.round(subtotalPaise * (val / 100));
+        } else {
+          dType = "fixed_amount";
+          discountPaise = Math.round(val * 100);
+        }
+
         appliedPromo = {
-          code: matchedPromo.code,
-          discountType: "free_delivery",
-          discountPaise: 5000,
-          description: matchedPromo.description || "Free Delivery"
+          code: matchedPromo.code.toUpperCase(),
+          discountType: dType,
+          discountPaise: discountPaise,
+          amount: val,
+          description: matchedPromo.description || "Promo Discount"
         };
         renderCheckout();
       } else {

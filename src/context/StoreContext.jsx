@@ -8,11 +8,25 @@ export function useStore() {
   return useContext(StoreContext);
 }
 
-import { normalizeProduct, getColourImage } from "./storeUtils.js";
-export { normalizeProduct, getColourImage };
+import {
+  normalizeProduct,
+  getColourImage,
+  getColourForImage,
+  hasProductColours,
+  sortProductsByColourAvailability
+} from "./storeUtils.js";
+export {
+  normalizeProduct,
+  getColourImage,
+  getColourForImage,
+  hasProductColours,
+  sortProductsByColourAvailability
+};
 
 export function StoreProvider({ children }) {
-  const [products, setProducts] = useState(() => productsSeed.map((p) => normalizeProduct(p)));
+  const [products, setProducts] = useState(() =>
+    sortProductsByColourAvailability(productsSeed.map((p) => normalizeProduct(p)))
+  );
   const [loading, setLoading] = useState(false);
   const [activeCategory, setActiveCategory] = useState("All");
   const [activeVariantType, setActiveVariantType] = useState("all");
@@ -91,13 +105,15 @@ export function StoreProvider({ children }) {
     }
 
     if (loaded && loaded.length > 0) {
-      const cleanList = filterOutDeleted(loaded);
+      const cleanList = sortProductsByColourAvailability(filterOutDeleted(loaded));
       setProducts(cleanList);
       try {
         localStorage.setItem("saloriya_admin_products", JSON.stringify(cleanList));
       } catch (e) {}
     } else {
-      const initial = filterOutDeleted(productsSeed.map((p) => normalizeProduct(p)));
+      const initial = sortProductsByColourAvailability(
+        filterOutDeleted(productsSeed.map((p) => normalizeProduct(p)))
+      );
       setProducts(initial);
       try {
         localStorage.setItem("saloriya_admin_products", JSON.stringify(initial));
@@ -271,12 +287,14 @@ export function StoreProvider({ children }) {
 
     setProducts((prev) => {
       const idx = prev.findIndex((p) => p.id === id || (normalized.slug && p.slug === normalized.slug));
+      let next;
       if (idx !== -1) {
-        const next = [...prev];
+        next = [...prev];
         next[idx] = normalized;
-        return next;
+      } else {
+        next = [normalized, ...prev];
       }
-      return [normalized, ...prev];
+      return sortProductsByColourAvailability(next);
     });
 
     // LocalStorage sync
@@ -386,6 +404,11 @@ export function StoreProvider({ children }) {
 
       return true;
     }).sort((a, b) => {
+      // Products with colours arranged one by one, then products without colours arranged one by one
+      const aHas = hasProductColours(a) ? 1 : 0;
+      const bHas = hasProductColours(b) ? 1 : 0;
+      if (bHas !== aHas) return bHas - aHas;
+
       if (activeSort === "price-asc") return (a.price_paise || 0) - (b.price_paise || 0);
       if (activeSort === "price-desc") return (b.price_paise || 0) - (a.price_paise || 0);
       if (activeSort === "name-asc") return a.name.localeCompare(b.name);

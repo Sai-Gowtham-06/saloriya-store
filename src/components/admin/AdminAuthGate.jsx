@@ -369,7 +369,7 @@ export default function AdminAuthGate({ onLoginSuccess }) {
               cursor: isSubmitting ? "not-allowed" : "pointer"
             }}
           >
-            {isSubmitting ? "Signing In…" : "Sign In to Admin Console ↗"}
+            {isSubmitting ? "Signing In…" : "Sign In to Admin Console "}
           </button>
         </form>
 

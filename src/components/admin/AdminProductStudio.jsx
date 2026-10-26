@@ -682,7 +682,7 @@ export default function AdminProductStudio({ products, onProductChanged, editing
       <div id="admin-products" className="admin-products-grid">
         {filteredPieces.length === 0 ? (
           <div className="empty-orders-box" style={{ gridColumn: "1 / -1", padding: "40px", textAlign: "center" }}>
-            <p style={{ fontSize: "28px", marginBottom: "8px" }}>💎</p>
+            <p style={{ fontSize: "28px", marginBottom: "8px" }}></p>
             <strong>No pieces match your filters</strong>
             <p className="hint">Try adjusting the search query, category, or status filter.</p>
           </div>

@@ -23,9 +23,9 @@ export default function CheckoutModal() {
 
   // Address state
   const [street, setStreet] = useState("");
-  const [city, setCity] = useState("Chennai");
-  const [state, setState] = useState("Tamil Nadu");
-  const [pincode, setPincode] = useState("600001");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [pincode, setPincode] = useState("");
 
   // Payment state
   const [paymentMethod, setPaymentMethod] = useState("cod"); // 'cod' | 'prepaid'
@@ -411,16 +411,54 @@ export default function CheckoutModal() {
         created_at: new Date().toISOString()
       };
 
-      // 1. Save to Supabase
+      // 1. Save to Central Orders API (accessible across all devices & admin console)
+      try {
+        await fetch("/api/orders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(orderPayload)
+        });
+      } catch (apiErr) {
+        console.warn("Central orders API post failed:", apiErr);
+      }
+
+      // 2. Save to Supabase (supporting both upgraded and legacy schemas)
       try {
         if (isSupabaseConfigured) {
-          await supabase.from("orders").insert([orderPayload]);
+          const sbPayload = {
+            ...orderPayload,
+            phone: cleanCustomerPhone,
+            customer_phone: cleanCustomerPhone,
+            address: {
+              street: street.trim(),
+              city: city.trim(),
+              state: state.trim(),
+              pincode: pincode.trim(),
+              full: fullAddress
+            },
+            payment_status: paymentMethod === "prepaid" ? "paid" : "pending",
+            order_status: "confirmed"
+          };
+          const { error: sbErr } = await supabase.from("orders").insert([sbPayload]);
+          if (sbErr) {
+            await supabase.from("orders").insert([{
+              customer_name: orderPayload.customer_name,
+              phone: cleanCustomerPhone,
+              address: { street: street.trim(), city: city.trim(), state: state.trim(), pincode: pincode.trim() },
+              payment_method: paymentMethod,
+              payment_status: paymentMethod === "prepaid" ? "paid" : "pending",
+              order_status: "confirmed",
+              total_paise: totalPaise,
+              discount_paise: effectiveDiscountPaise,
+              promo_code: appliedPromo ? appliedPromo.code : null
+            }]).catch(() => {});
+          }
         }
       } catch (dbErr) {
         console.warn("Supabase order insert:", dbErr);
       }
 
-      // 2. Save to LocalStorage
+      // 3. Save to LocalStorage fallback
       try {
         const existing = JSON.parse(localStorage.getItem("saloriya_admin_orders") || "[]");
         existing.unshift(orderPayload);
@@ -433,7 +471,7 @@ export default function CheckoutModal() {
           method: "POST",
           headers: { "Content-Type": "application/json", Accept: "application/json" },
           body: JSON.stringify({
-            _subject: `💎 Verified Order Confirmed #${orderId} - SALORIYA Store`,
+            _subject: ` Verified Order Confirmed #${orderId} - SALORIYA Store`,
             "Order ID": `#${orderId}`,
             "Customer Name": customerName.trim(),
             "Verified Email": cleanEmail,
@@ -683,7 +721,7 @@ export default function CheckoutModal() {
                     boxSizing: "border-box"
                   }}
                 >
-                  Track Order on WhatsApp ↗
+                  Track Order on WhatsApp 
                 </a>
               </div>
             </div>
@@ -1020,6 +1058,7 @@ export default function CheckoutModal() {
 
               {/* Field 4: City, State, PIN Code Row */}
               <div
+                className="checkout-location-grid"
                 style={{
                   display: "grid",
                   gridTemplateColumns: "1fr 1fr 1fr",
@@ -1032,7 +1071,7 @@ export default function CheckoutModal() {
                     id="checkout-city"
                     type="text"
                     required
-                    placeholder="Chennai"
+                    placeholder="City (e.g. Chennai)"
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
                     style={{
@@ -1051,6 +1090,7 @@ export default function CheckoutModal() {
                     id="checkout-state"
                     type="text"
                     required
+                    placeholder="State (e.g. Tamil Nadu)"
                     value={state}
                     onChange={(e) => setState(e.target.value)}
                     style={{
@@ -1070,7 +1110,7 @@ export default function CheckoutModal() {
                     type="text"
                     required
                     maxLength={6}
-                    placeholder="600001"
+                    placeholder="PIN Code (e.g. 600001)"
                     value={pincode}
                     onChange={(e) => setPincode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                     style={{
@@ -1154,7 +1194,7 @@ export default function CheckoutModal() {
                         boxSizing: "border-box"
                       }}
                     >
-                      ⚡ Open Installed UPI App on Mobile ↗
+                      ⚡ Open Installed UPI App on Mobile 
                     </a>
 
                     {/* Quick App Shortcut Row */}
@@ -1614,7 +1654,7 @@ export default function CheckoutModal() {
                   ? "Placing Order…"
                   : paymentMethod === "prepaid"
                   ? `CONFIRM & SUBMIT ONLINE ORDER (${formatMoney(totalPaise)}) 💳`
-                  : `CONFIRM & PLACE ORDER (${formatMoney(totalPaise)}) ↗`}
+                  : `CONFIRM & PLACE ORDER (${formatMoney(totalPaise)}) `}
               </button>
             </form>
           )}

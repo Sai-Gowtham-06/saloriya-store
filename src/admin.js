@@ -448,7 +448,7 @@ function renderAdminProducts() {
   if (!filtered.length) {
     inventory.innerHTML = `
       <div class="empty-orders-box" style="grid-column: 1 / -1; padding: 40px; text-align: center;">
-        <p style="font-size: 28px; margin-bottom: 8px;">💎</p>
+        <p style="font-size: 28px; margin-bottom: 8px;"></p>
         <strong>No pieces match your filters</strong>
         <p class="hint">Try adjusting the search query, category, or status filter.</p>
       </div>
@@ -462,8 +462,8 @@ function renderAdminProducts() {
     const thumbUrl = p.image_urls?.[0] || "";
     const hasColours = Array.isArray(p.colours) && p.colours.length > 1;
     const variantBadge = hasColours 
-      ? `<span class="card-variant-badge multi-colour">✨ ${p.colours.length} Colours (${escapeHtml(p.colours.join(", "))})</span>`
-      : `<span class="card-variant-badge single-look">👑 Single Signature Look</span>`;
+      ? `<span class="card-variant-badge multi-colour"> ${p.colours.length} Colours (${escapeHtml(p.colours.join(", "))})</span>`
+      : `<span class="card-variant-badge single-look"> Single Signature Look</span>`;
 
     return `
       <article class="admin-product-card ${p.is_published ? '' : 'draft-card'}" data-card-id="${p.id}">
@@ -998,7 +998,7 @@ function orderCard(order) {
           <div class="order-phone-row">
             <span class="order-phone-number">📞 ${escapeHtml(order.phone)}</span>
             <a href="${waUrl}" target="_blank" rel="noopener,noreferrer" class="order-whatsapp-link" title="Open WhatsApp chat with prefilled order details">
-              WhatsApp ↗
+              WhatsApp 
             </a>
           </div>
           <div class="order-address-snippet">

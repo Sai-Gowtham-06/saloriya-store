@@ -4,6 +4,10 @@
   "rewrites": [
     { "source": "/admin", "destination": "/admin.html" },
     { "source": "/admin/(.*)", "destination": "/admin.html" },
+    { "source": "/api/products", "destination": "/api/products.js" },
+    { "source": "/api/products/(.*)", "destination": "/api/products.js" },
+    { "source": "/api/orders", "destination": "/api/orders.js" },
+    { "source": "/api/orders/(.*)", "destination": "/api/orders.js" },
     { "source": "/((?!api/.*).*)", "destination": "/index.html" }
   ]
 }

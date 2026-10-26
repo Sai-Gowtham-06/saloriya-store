@@ -26,7 +26,7 @@ export default function ContactSection() {
               <span className="contact-label">WhatsApp Concierge</span>
               <span className="contact-value">Chat with Us</span>
             </div>
-            <span className="contact-arrow">↗</span>
+            <span className="contact-arrow"></span>
           </a>
 
           <a
@@ -46,7 +46,7 @@ export default function ContactSection() {
               <span className="contact-label">Instagram</span>
               <span className="contact-value">@saloriya_off</span>
             </div>
-            <span className="contact-arrow">↗</span>
+            <span className="contact-arrow"></span>
           </a>
 
           <a className="contact-item" href="mailto:Saloriyaofficial@gmail.com">
@@ -60,7 +60,7 @@ export default function ContactSection() {
               <span className="contact-label">Email Support</span>
               <span className="contact-value">Saloriyaofficial@gmail.com</span>
             </div>
-            <span className="contact-arrow">↗</span>
+            <span className="contact-arrow"></span>
           </a>
         </div>
       </div>

@@ -28,38 +28,6 @@
     "updated_at": "2026-10-24T11:25:59.617Z"
   },
   {
-    "id": "a98b731a-154b-4dec-8b81-dd95b4141c11",
-    "name": "Ruby Antique Silver Pearl Drop Earrings",
-    "slug": "ruby-antique-silver-pearl-drop-earrings",
-    "description": "Elegant antique silver-tone earrings featuring deep ruby-red teardrop stones, intricate fan-shaped detailing, black and red stone accents, and delicate pearl drops. Perfect for weddings, festive celebrations, and traditional occasions.",
-    "category": "Jhumkas",
-    "price_paise": 16900,
-    "image_urls": [
-      "https://ybyboplrrovrhnnunkaa.supabase.co/storage/v1/object/public/product-images/8bc81f8a-0da5-4253-ad08-c28638af3721-Ornate-Ruby-and-Pearl-Jhumka-Earrings.png"
-    ],
-    "colours": [],
-    "stock": 11,
-    "is_published": true,
-    "created_at": "2026-10-23T10:35:50.732476+00:00",
-    "updated_at": "2026-10-25T07:49:36.190Z"
-  },
-  {
-    "id": "86132a0e-6532-46e8-8dd7-997a1b8c3940",
-    "name": "Antique Gold Ruby Green Stone Pearl Jhumka Earrings",
-    "slug": "antique-gold-ruby-green-pearl-jhumka-earrings",
-    "description": "Elegant antique gold-tone jhumkas featuring ruby-red and emerald-green stones, intricate detailing, and beautiful pearl accents with dangling pearl drops. Perfect for weddings, festive celebrations, and traditional occasions.",
-    "category": "Jhumkas",
-    "price_paise": 14900,
-    "image_urls": [
-      "https://ybyboplrrovrhnnunkaa.supabase.co/storage/v1/object/public/product-images/5e36baf6-0fed-4fc4-83df-64fd384471a4-Antique-Gold-Jhumkas-in-Velvet-Box.png"
-    ],
-    "colours": [],
-    "stock": 15,
-    "is_published": true,
-    "created_at": "2026-10-23T10:25:20.909795+00:00",
-    "updated_at": "2026-10-23T10:26:55.301+00:00"
-  },
-  {
     "id": "97fd5dab-6b02-40b5-b339-9370d8f301a5",
     "name": "Antique Silver Pearl Chandbali Jhumka Earrings",
     "slug": "antique-silver-pearl-chandbali-jhumka-earrings",
@@ -104,22 +72,6 @@
     "updated_at": "2026-10-24T10:23:50.467Z"
   },
   {
-    "id": "84675dd2-70a1-47c5-966b-3f781ff0fbba",
-    "name": "Antique Gold Temple Chandbali Pearl Drop Earrings",
-    "slug": "antique-gold-temple-chandbali-pearl-drop-earrings",
-    "description": "Beautiful antique gold-tone chandbali earrings featuring intricate temple motifs, black and multicolour stone accents, and delicate pearl drops. Perfect for weddings, festive celebrations, and traditional ethnic wear.",
-    "category": "Earrings",
-    "price_paise": 16900,
-    "image_urls": [
-      "https://ybyboplrrovrhnnunkaa.supabase.co/storage/v1/object/public/product-images/be78a53f-d082-425f-ab3f-e2e66e321026-Antique-Gold-Chandelier-Earrings-in-Pink-Velvet.png"
-    ],
-    "colours": [],
-    "stock": 5,
-    "is_published": true,
-    "created_at": "2026-10-23T11:36:50.876374+00:00",
-    "updated_at": "2026-10-24T10:23:38.361Z"
-  },
-  {
     "id": "f2fe3613-d155-4dab-a11c-48aecac70369",
     "name": "Antique Silver Stone Jhumka Earrings",
     "slug": "antique-silver-stone-jhumka-earrings",
@@ -146,22 +98,6 @@
     "updated_at": "2026-10-24T10:23:35.404Z"
   },
   {
-    "id": "74126991-7775-4b06-9a6f-9c09788dcfbd",
-    "name": "Antique Gold Ruby Emerald Pearl Jhumka Earrings",
-    "slug": "antique-gold-ruby-emerald-pearl-jhumka-earrings",
-    "description": "Beautiful antique gold-tone jhumkas featuring ruby-red and emerald-green floral stones, intricate dome detailing, and delicate pearl drops. Perfect for weddings, festive celebrations, and traditional ethnic wear.",
-    "category": "Earrings",
-    "price_paise": 15900,
-    "image_urls": [
-      "https://ybyboplrrovrhnnunkaa.supabase.co/storage/v1/object/public/product-images/0d6e2270-60e1-4aec-af1f-fe3954b235bd-Ornate-Ruby-and-Emerald-Jhumka-Earrings.png"
-    ],
-    "colours": [],
-    "stock": 4,
-    "is_published": true,
-    "created_at": "2026-10-23T11:55:09.774749+00:00",
-    "updated_at": "2026-10-24T11:14:11.796Z"
-  },
-  {
     "id": "f6ebe650-629a-4a3f-bf6c-ff07e1c0a53a",
     "name": "Royal Lotus Antique Gold Chandbali Earrings",
     "slug": "royal-lotus-antique-gold-chandbali-earrings",
@@ -180,32 +116,6 @@
     "is_published": true,
     "created_at": "2026-10-23T12:04:17.271918+00:00",
     "updated_at": "2026-10-25T07:54:47.097Z"
-  },
-  {
-    "id": "198bedc5-e92f-49f3-8181-9fbada07ad65",
-    "name": "butterfly earring",
-    "slug": "black metal",
-    "description": "**Lavender Butterfly Oxidised Silver Jhumka Earrings**\n\nAdd a touch of charm with these elegant butterfly jhumkas featuring lavender and ivory accents, intricate oxidised silver detailing, and delicate dangling beads. Perfect for festive occasions, parties, and everyday ethnic styling.\n\n**SALORIYA — Little Details, Lasting Elegance.**",
-    "category": "Jhumkas",
-    "price_paise": 6900,
-    "image_urls": [
-      "https://ybyboplrrovrhnnunkaa.supabase.co/storage/v1/object/public/product-images/e554fc9b-6638-455a-871a-b5444c9297a7-green-butterfly.jpeg",
-      "https://ybyboplrrovrhnnunkaa.supabase.co/storage/v1/object/public/product-images/48e4b9b9-b858-4544-9a69-00d3f9cc4242-file_00000000dca082469a2f688599f5697c.png",
-      "https://ybyboplrrovrhnnunkaa.supabase.co/storage/v1/object/public/product-images/e422765d-2f08-4ee5-b4aa-18c4d47beb2e-file_00000000207c8246983dbb09c5ccb94a.png",
-      "https://ybyboplrrovrhnnunkaa.supabase.co/storage/v1/object/public/product-images/afc30885-d782-4f43-bf37-b017689bd935-file_000000005378824699ecef25b05e9454.png",
-      "https://ybyboplrrovrhnnunkaa.supabase.co/storage/v1/object/public/product-images/bdebb6d6-cf9c-409b-9f9b-12acc4915647-file_0000000008c88246b4b32ca02d6604b7.png"
-    ],
-    "colours": [
-      "GREEN",
-      "PINK",
-      "BEIGE",
-      "LIGHT PINK",
-      "LAVENDER"
-    ],
-    "stock": 9,
-    "is_published": true,
-    "created_at": "2026-10-22T08:46:14.018021+00:00",
-    "updated_at": "2026-10-23T13:45:16.305+00:00"
   },
   {
     "id": "0fa9cd8e-dd35-4951-93f8-bbd270e2cc2e",
@@ -232,5 +142,69 @@
     "is_published": true,
     "created_at": "2026-10-23T11:32:25.96304+00:00",
     "updated_at": "2026-10-24T10:23:41.854Z"
+  },
+  {
+    "id": "a98b731a-154b-4dec-8b81-dd95b4141c11",
+    "name": "Ruby Antique Silver Pearl Drop Earrings",
+    "slug": "ruby-antique-silver-pearl-drop-earrings",
+    "description": "Elegant antique silver-tone earrings featuring deep ruby-red teardrop stones, intricate fan-shaped detailing, black and red stone accents, and delicate pearl drops. Perfect for weddings, festive celebrations, and traditional occasions.",
+    "category": "Jhumkas",
+    "price_paise": 16900,
+    "image_urls": [
+      "https://ybyboplrrovrhnnunkaa.supabase.co/storage/v1/object/public/product-images/8bc81f8a-0da5-4253-ad08-c28638af3721-Ornate-Ruby-and-Pearl-Jhumka-Earrings.png"
+    ],
+    "colours": [],
+    "stock": 11,
+    "is_published": true,
+    "created_at": "2026-10-23T10:35:50.732476+00:00",
+    "updated_at": "2026-10-25T07:49:36.190Z"
+  },
+  {
+    "id": "86132a0e-6532-46e8-8dd7-997a1b8c3940",
+    "name": "Antique Gold Ruby Green Stone Pearl Jhumka Earrings",
+    "slug": "antique-gold-ruby-green-pearl-jhumka-earrings",
+    "description": "Elegant antique gold-tone jhumkas featuring ruby-red and emerald-green stones, intricate detailing, and beautiful pearl accents with dangling pearl drops. Perfect for weddings, festive celebrations, and traditional occasions.",
+    "category": "Jhumkas",
+    "price_paise": 14900,
+    "image_urls": [
+      "https://ybyboplrrovrhnnunkaa.supabase.co/storage/v1/object/public/product-images/5e36baf6-0fed-4fc4-83df-64fd384471a4-Antique-Gold-Jhumkas-in-Velvet-Box.png"
+    ],
+    "colours": [],
+    "stock": 15,
+    "is_published": true,
+    "created_at": "2026-10-23T10:25:20.909795+00:00",
+    "updated_at": "2026-10-23T10:26:55.301+00:00"
+  },
+  {
+    "id": "84675dd2-70a1-47c5-966b-3f781ff0fbba",
+    "name": "Antique Gold Temple Chandbali Pearl Drop Earrings",
+    "slug": "antique-gold-temple-chandbali-pearl-drop-earrings",
+    "description": "Beautiful antique gold-tone chandbali earrings featuring intricate temple motifs, black and multicolour stone accents, and delicate pearl drops. Perfect for weddings, festive celebrations, and traditional ethnic wear.",
+    "category": "Earrings",
+    "price_paise": 16900,
+    "image_urls": [
+      "https://ybyboplrrovrhnnunkaa.supabase.co/storage/v1/object/public/product-images/be78a53f-d082-425f-ab3f-e2e66e321026-Antique-Gold-Chandelier-Earrings-in-Pink-Velvet.png"
+    ],
+    "colours": [],
+    "stock": 5,
+    "is_published": true,
+    "created_at": "2026-10-23T11:36:50.876374+00:00",
+    "updated_at": "2026-10-24T10:23:38.361Z"
+  },
+  {
+    "id": "74126991-7775-4b06-9a6f-9c09788dcfbd",
+    "name": "Antique Gold Ruby Emerald Pearl Jhumka Earrings",
+    "slug": "antique-gold-ruby-emerald-pearl-jhumka-earrings",
+    "description": "Beautiful antique gold-tone jhumkas featuring ruby-red and emerald-green floral stones, intricate dome detailing, and delicate pearl drops. Perfect for weddings, festive celebrations, and traditional ethnic wear.",
+    "category": "Earrings",
+    "price_paise": 15900,
+    "image_urls": [
+      "https://ybyboplrrovrhnnunkaa.supabase.co/storage/v1/object/public/product-images/0d6e2270-60e1-4aec-af1f-fe3954b235bd-Ornate-Ruby-and-Emerald-Jhumka-Earrings.png"
+    ],
+    "colours": [],
+    "stock": 3,
+    "is_published": true,
+    "created_at": "2026-10-23T11:55:09.774749+00:00",
+    "updated_at": "2026-10-26T12:57:54.772Z"
   }
 ]

@@ -1,0 +1,25 @@
+[
+  {
+    "order_id": "SLR-474480",
+    "customer_name": "hvhv",
+    "customer_email": "saigowtham00007@gmail.com",
+    "customer_phone": "8122291690",
+    "email_token": "emv_1793019462118_62e1f775645b5fc7923675e68e811767",
+    "delivery_address": "ugkgkmug, Chennai, Tamil Nadu - 600001",
+    "product_id": "74126991-7775-4b06-9a6f-9c09788dcfbd",
+    "product_name": "Antique Gold Ruby Emerald Pearl Jhumka Earrings",
+    "product_image": "https://ybyboplrrovrhnnunkaa.supabase.co/storage/v1/object/public/product-images/0d6e2270-60e1-4aec-af1f-fe3954b235bd-Ornate-Ruby-and-Emerald-Jhumka-Earrings.png",
+    "variant_colour": "Standard",
+    "quantity": 1,
+    "subtotal_paise": 15900,
+    "total_paise": 15900,
+    "discount_paise": 5000,
+    "payment_method": "cod",
+    "utr_number": null,
+    "payment_screenshot": null,
+    "promo_code": "COLLEGE",
+    "status": "pending",
+    "created_at": "2026-10-26T12:57:54.480Z",
+    "updated_at": "2026-10-26T13:39:37.030Z"
+  }
+]

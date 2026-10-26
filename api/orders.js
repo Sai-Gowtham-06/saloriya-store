@@ -1,0 +1,248 @@
+import fs from "fs";
+import path from "path";
+import dotenv from "dotenv";
+import ordersSeed from "../src/ordersSeed.json" with { type: "json" };
+
+dotenv.config();
+dotenv.config({ path: ".env.local", override: true });
+
+// Global memory cache for serverless environments
+globalThis.__saloriya_orders_store = globalThis.__saloriya_orders_store || null;
+
+const SUPABASE_URL = (process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "https://ybyboplrrovrhnnunkaa.supabase.co").trim();
+const SUPABASE_KEY = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY || "sb_publishable_UYmUTnaCjZ3AGFn2k4BR3A_rYGAI3am").trim();
+
+function getOrdersFilePath() {
+  return path.resolve(process.cwd(), "src", "ordersSeed.json");
+}
+
+function readOrders() {
+  if (Array.isArray(globalThis.__saloriya_orders_store) && globalThis.__saloriya_orders_store.length > 0) {
+    return globalThis.__saloriya_orders_store;
+  }
+
+  try {
+    const filePath = getOrdersFilePath();
+    if (fs.existsSync(filePath)) {
+      const data = JSON.parse(fs.readFileSync(filePath, "utf8"));
+      if (Array.isArray(data) && data.length > 0) {
+        globalThis.__saloriya_orders_store = data;
+        return data;
+      }
+    }
+  } catch (e) {
+    // In serverless readonly environment, fallback to memory store
+  }
+
+  const fallback = Array.isArray(ordersSeed) ? ordersSeed : [];
+  globalThis.__saloriya_orders_store = fallback;
+  return fallback;
+}
+
+function writeOrders(orders) {
+  globalThis.__saloriya_orders_store = orders;
+  try {
+    const filePath = getOrdersFilePath();
+    fs.writeFileSync(filePath, JSON.stringify(orders, null, 2), "utf8");
+    return true;
+  } catch (e) {
+    // Serverless filesystem may be ephemeral/readonly
+    return false;
+  }
+}
+
+async function querySupabaseOrders() {
+  if (!SUPABASE_URL || !SUPABASE_KEY) return null;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/orders?select=*&order=created_at.desc`, {
+      signal: AbortSignal.timeout(3000),
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`
+      }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        return data.map((o) => ({
+          ...o,
+          order_id: o.order_id || (o.id ? `SLR-${String(o.id).slice(-6).toUpperCase()}` : `SLR-${Date.now().toString().slice(-6)}`),
+          customer_phone: o.customer_phone || o.phone || "",
+          delivery_address: o.delivery_address || (typeof o.address === "object" ? (o.address?.full || `${o.address?.street || ""}, ${o.address?.city || ""}`) : String(o.address || "")),
+          status: o.status || o.order_status || "confirmed"
+        }));
+      }
+    }
+  } catch (e) {
+    console.warn("Supabase orders query error in api/orders:", e);
+  }
+  return null;
+}
+
+export default async function handler(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
+  const url = req.url || "";
+  const pathParts = url.split("?")[0].split("/").filter(Boolean);
+  const isStatusUpdate = url.includes("/status");
+
+  let idFromPath = null;
+  if (pathParts.length >= 3 && pathParts[1] === "orders") {
+    idFromPath = pathParts[2];
+  }
+
+  const { id } = req.query || {};
+
+  try {
+    // 1. GET /api/orders
+    if (req.method === "GET") {
+      const sbOrders = await querySupabaseOrders();
+      const localOrders = readOrders();
+
+      const mergedMap = new Map();
+      [...(sbOrders || []), ...localOrders].forEach((o) => {
+        const key = String(o.order_id || o.id);
+        if (key && !mergedMap.has(key)) {
+          mergedMap.set(key, o);
+        }
+      });
+
+      const orders = Array.from(mergedMap.values());
+      writeOrders(orders);
+      return res.status(200).json({ success: true, orders });
+    }
+
+    // 2. POST /api/orders (Create order)
+    if (req.method === "POST") {
+      const body = req.body || {};
+      if (!body.order_id) {
+        return res.status(400).json({ success: false, error: "Order ID is required" });
+      }
+
+      let orders = readOrders();
+      const existingIdx = orders.findIndex(
+        (o) => (o.order_id && o.order_id === body.order_id) || (o.id && o.id === body.id)
+      );
+
+      if (existingIdx !== -1) {
+        orders[existingIdx] = { ...orders[existingIdx], ...body };
+      } else {
+        orders.unshift(body);
+      }
+
+      writeOrders(orders);
+
+      // Persist to Supabase orders table across all devices
+      if (SUPABASE_URL && SUPABASE_KEY) {
+        try {
+          const sbPayload = {
+            order_id: body.order_id,
+            product_name: body.product_name,
+            product_id: body.product_id,
+            variant_colour: body.variant_colour || "Standard",
+            quantity: body.quantity || 1,
+            unit_price_paise: body.unit_price_paise,
+            total_paise: body.total_paise,
+            payment_method: body.payment_method,
+            customer_name: body.customer_name,
+            customer_phone: body.customer_phone,
+            customer_email: body.customer_email || null,
+            delivery_address: body.delivery_address,
+            delivery_city: body.delivery_city,
+            delivery_state: body.delivery_state,
+            delivery_pincode: body.delivery_pincode,
+            notes: body.notes || "",
+            status: body.status || "confirmed",
+            payment_screenshot_url: body.payment_screenshot_url || null,
+            created_at: body.created_at || new Date().toISOString()
+          };
+
+          await fetch(`${SUPABASE_URL}/rest/v1/orders`, {
+            method: "POST",
+            headers: {
+              apikey: SUPABASE_KEY,
+              Authorization: `Bearer ${SUPABASE_KEY}`,
+              "Content-Type": "application/json",
+              Prefer: "resolution=merge-duplicates"
+            },
+            body: JSON.stringify(sbPayload)
+          });
+        } catch (sbErr) {
+          console.warn("Supabase order insert warning:", sbErr);
+        }
+      }
+
+      return res.status(200).json({ success: true, order: body, ordersCount: orders.length });
+    }
+
+    // 3. PUT /api/orders/:id/status or PUT /api/orders (Status update)
+    if (req.method === "PUT") {
+      const targetId = idFromPath || id || req.body?.id || req.body?.order_id;
+      const status = req.body?.status;
+      if (!targetId || !status) {
+        return res.status(400).json({ success: false, error: "Missing order ID or status" });
+      }
+
+      let orders = readOrders();
+      const idx = orders.findIndex((o) => o.order_id === targetId || o.id === targetId);
+      if (idx !== -1) {
+        orders[idx].status = status;
+        orders[idx].updated_at = new Date().toISOString();
+        writeOrders(orders);
+      }
+
+      if (SUPABASE_URL && SUPABASE_KEY) {
+        try {
+          await fetch(`${SUPABASE_URL}/rest/v1/orders?order_id=eq.${encodeURIComponent(targetId)}`, {
+            method: "PATCH",
+            headers: {
+              apikey: SUPABASE_KEY,
+              Authorization: `Bearer ${SUPABASE_KEY}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ status })
+          });
+        } catch (e) {}
+      }
+
+      return res.status(200).json({ success: true, message: "Order status updated" });
+    }
+
+    // 4. DELETE /api/orders/:id or DELETE /api/orders
+    if (req.method === "DELETE") {
+      const targetId = idFromPath || id || req.body?.id || req.body?.order_id;
+      if (!targetId) {
+        return res.status(400).json({ success: false, error: "Order ID required for deletion" });
+      }
+
+      let orders = readOrders();
+      orders = orders.filter((o) => o.order_id !== targetId && o.id !== targetId);
+      writeOrders(orders);
+
+      if (SUPABASE_URL && SUPABASE_KEY) {
+        try {
+          await fetch(`${SUPABASE_URL}/rest/v1/orders?order_id=eq.${encodeURIComponent(targetId)}`, {
+            method: "DELETE",
+            headers: {
+              apikey: SUPABASE_KEY,
+              Authorization: `Bearer ${SUPABASE_KEY}`
+            }
+          });
+        } catch (e) {}
+      }
+
+      return res.status(200).json({ success: true, message: "Order deleted" });
+    }
+
+    return res.status(405).json({ success: false, error: "Method not allowed" });
+  } catch (err) {
+    console.error("Orders API error:", err);
+    return res.status(500).json({ success: false, error: err.message || "Internal server error" });
+  }
+}

@@ -66,7 +66,18 @@ export default function AdminRecordOrderModal({ isOpen, onClose, products, onOrd
       created_at: new Date().toISOString()
     };
 
-    // 1. Save to Supabase
+    // 1. Save to Central Orders API
+    try {
+      await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(orderPayload)
+      });
+    } catch (apiErr) {
+      console.warn("Central API record order error:", apiErr);
+    }
+
+    // 2. Save to Supabase
     try {
       if (isSupabaseConfigured) {
         await supabase.from("orders").insert([orderPayload]);
@@ -79,7 +90,7 @@ export default function AdminRecordOrderModal({ isOpen, onClose, products, onOrd
       console.warn("Supabase order error:", dbErr);
     }
 
-    // 2. Save to localStorage
+    // 3. Save to localStorage
     try {
       const local = JSON.parse(localStorage.getItem("saloriya_admin_orders") || "[]");
       local.unshift(orderPayload);

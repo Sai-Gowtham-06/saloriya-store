@@ -293,7 +293,7 @@ export async function sendOtpEmail({ email, otp }) {
         body: JSON.stringify({
           from: "SALORIYA Store <orders@saloriya.com>",
           to: [normEmail],
-          subject: `💎 Your SALORIYA Order Verification Code: ${otp}`,
+          subject: ` Your SALORIYA Order Verification Code: ${otp}`,
           text: `Your SALORIYA order verification code is: ${otp}\n\nThis verification code is valid for 5 minutes.\n\nIf you did not initiate this order, please disregard this email. Never share your verification code with anyone.\n\n— SALORIYA Store`,
           html: htmlContent
         })
@@ -340,7 +340,7 @@ export async function sendOtpEmail({ email, otp }) {
           from: senderFrom,
           to: normEmail,
           replyTo: smtpUser,
-          subject: `💎 Your SALORIYA Order Verification Code: ${otp}`,
+          subject: ` Your SALORIYA Order Verification Code: ${otp}`,
           text: `Your SALORIYA order verification code is: ${otp}\n\nThis verification code is valid for 5 minutes.\n\nIf you did not initiate this order, please disregard this email. Never share your verification code with anyone.\n\n— SALORIYA Store`,
           html: htmlContent
         });

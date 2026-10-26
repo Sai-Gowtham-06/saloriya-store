@@ -21,14 +21,27 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
   };
 
   const handleStatusChange = async (orderId, newStatus) => {
+    // 1. Update Central Orders API
+    try {
+      await fetch(`/api/orders/${orderId}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus })
+      });
+    } catch (apiErr) {
+      console.warn("Central API update status error:", apiErr);
+    }
+
+    // 2. Update Supabase
     try {
       if (isSupabaseConfigured) {
-        await supabase.from("orders").update({ status: newStatus }).eq("order_id", orderId);
+        await supabase.from("orders").update({ status: newStatus, order_status: newStatus }).eq("order_id", orderId);
       }
     } catch (e) {
       console.warn("Supabase update error:", e);
     }
 
+    // 3. Update localStorage
     try {
       const local = JSON.parse(localStorage.getItem("saloriya_admin_orders") || "[]");
       const idx = local.findIndex((o) => o.order_id === orderId);
@@ -58,7 +71,15 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
       localStorage.setItem("saloriya_deleted_order_ids", JSON.stringify(deleted));
     } catch (e) {}
 
-    // 2. Remove from localStorage
+    // 2. Remove from Central Orders API
+    try {
+      if (orderId) await fetch(`/api/orders/${orderId}`, { method: "DELETE" });
+      if (dbId && dbId !== orderId) await fetch(`/api/orders/${dbId}`, { method: "DELETE" });
+    } catch (apiErr) {
+      console.warn("Central API delete error:", apiErr);
+    }
+
+    // 3. Remove from localStorage
     try {
       const local = JSON.parse(localStorage.getItem("saloriya_admin_orders") || "[]");
       const filtered = local.filter((o) => {
@@ -74,7 +95,7 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
       localStorage.setItem("saloriya_admin_orders", JSON.stringify(filtered));
     } catch (e) {}
 
-    // 3. Delete from Supabase
+    // 4. Delete from Supabase
     try {
       if (isSupabaseConfigured) {
         if (order.order_id) await supabase.from("orders").delete().eq("order_id", order.order_id);
@@ -286,7 +307,7 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
                           textDecoration: "none"
                         }}
                       >
-                        📱 +91 {order.customer_phone} ↗
+                        📱 +91 {order.customer_phone} 
                       </a>
                     </div>
                     <div style={{ fontSize: "12.5px", color: "var(--muted)", lineHeight: 1.4, marginTop: "4px" }}>

@@ -18,14 +18,14 @@ export default function CollectionTabs() {
         className={`collection-tab ${activeVariantType === "with-colours" ? "active" : ""}`}
         onClick={() => setActiveVariantType("with-colours")}
       >
-        <span className="tab-label">✨ Multi-Colour Editions</span>
+        <span className="tab-label"> Multi-Colour Editions</span>
       </button>
       <button
         type="button"
         className={`collection-tab ${activeVariantType === "single-colour" ? "active" : ""}`}
         onClick={() => setActiveVariantType("single-colour")}
       >
-        <span className="tab-label">👑 Signature Single Looks</span>
+        <span className="tab-label"> Signature Single Looks</span>
       </button>
     </div>
   );

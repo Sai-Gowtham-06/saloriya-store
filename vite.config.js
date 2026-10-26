@@ -13,6 +13,8 @@ import fs from "fs";
 
 function vercelApiDevPlugin() {
   const seedPath = resolve(process.cwd(), "src", "productsSeed.json");
+  const ordersSeedPath = resolve(process.cwd(), "src", "ordersSeed.json");
+
   const readProducts = () => {
     try {
       if (fs.existsSync(seedPath)) {
@@ -29,6 +31,26 @@ function vercelApiDevPlugin() {
       return true;
     } catch (e) {
       console.error("Vite API write error:", e);
+      return false;
+    }
+  };
+
+  const readOrders = () => {
+    try {
+      if (fs.existsSync(ordersSeedPath)) {
+        return JSON.parse(fs.readFileSync(ordersSeedPath, "utf8"));
+      }
+    } catch (e) {
+      console.error("Vite API read orders error:", e);
+    }
+    return [];
+  };
+  const writeOrders = (orders) => {
+    try {
+      fs.writeFileSync(ordersSeedPath, JSON.stringify(orders, null, 2), "utf8");
+      return true;
+    } catch (e) {
+      console.error("Vite API write orders error:", e);
       return false;
     }
   };
@@ -64,9 +86,16 @@ function vercelApiDevPlugin() {
             }
           }
 
+          const sortProductsByColours = (list) => {
+            if (!Array.isArray(list)) return [];
+            const withColours = list.filter((p) => Array.isArray(p.colours) && p.colours.length > 0 && p.colours.some((c) => c && c.trim().toLowerCase() !== "standard"));
+            const withoutColours = list.filter((p) => !Array.isArray(p.colours) || p.colours.length === 0 || !p.colours.some((c) => c && c.trim().toLowerCase() !== "standard"));
+            return [...withColours, ...withoutColours];
+          };
+
           // GET /api/products
           if (req.method === "GET" && url === "/api/products") {
-            const products = readProducts();
+            const products = sortProductsByColours(readProducts());
             return res.json({ success: true, products });
           }
 
@@ -122,8 +151,73 @@ function vercelApiDevPlugin() {
               const newId = targetId || `prod_${Date.now()}`;
               products.unshift({ ...body, id: newId, created_at: new Date().toISOString() });
             }
-            writeProducts(products);
-            return res.json({ success: true, products });
+            const sortedProds = sortProductsByColours(products);
+            writeProducts(sortedProds);
+            return res.json({ success: true, products: sortedProds });
+          }
+        }
+
+        if (url.startsWith("/api/orders")) {
+          let body = {};
+          if (req.method === "POST" || req.method === "PUT") {
+            const buffers = [];
+            for await (const chunk of req) {
+              buffers.push(chunk);
+            }
+            try {
+              body = JSON.parse(Buffer.concat(buffers).toString());
+            } catch (e) {
+              body = {};
+            }
+          }
+
+          // GET /api/orders
+          if (req.method === "GET" && url === "/api/orders") {
+            const orders = readOrders();
+            return res.json({ success: true, orders });
+          }
+
+          // POST /api/orders
+          if (req.method === "POST" && url === "/api/orders") {
+            if (!body || !body.order_id) {
+              return res.status(400).json({ success: false, error: "Invalid order payload" });
+            }
+            const orders = readOrders();
+            const existingIdx = orders.findIndex(
+              (o) => (o.order_id && o.order_id === body.order_id) || (o.id && o.id === body.id)
+            );
+            if (existingIdx !== -1) {
+              orders[existingIdx] = { ...orders[existingIdx], ...body };
+            } else {
+              orders.unshift(body);
+            }
+            writeOrders(orders);
+            return res.json({ success: true, order: body, ordersCount: orders.length });
+          }
+
+          // PUT /api/orders/:id/status
+          if (req.method === "PUT" && url.endsWith("/status")) {
+            const parts = url.split("/");
+            const id = parts[parts.length - 2];
+            const orders = readOrders();
+            const idx = orders.findIndex((o) => o.order_id === id || o.id === id);
+            if (idx !== -1) {
+              orders[idx].status = body.status;
+              orders[idx].updated_at = new Date().toISOString();
+              writeOrders(orders);
+              return res.json({ success: true, order: orders[idx] });
+            }
+            return res.status(404).json({ success: false, message: "Order not found" });
+          }
+
+          // DELETE /api/orders/:id
+          if (req.method === "DELETE") {
+            const parts = url.split("/");
+            const id = parts[parts.length - 1];
+            let orders = readOrders();
+            orders = orders.filter((o) => o.order_id !== id && o.id !== id);
+            writeOrders(orders);
+            return res.json({ success: true, message: "Order deleted" });
           }
         }
 
@@ -190,7 +284,10 @@ export default defineConfig(({ mode }) => {
         ignored: [
           "**/src/productsSeed.json",
           "**/productsSeed.json",
-          resolve(__dirname, "src/productsSeed.json")
+          resolve(__dirname, "src/productsSeed.json"),
+          "**/src/ordersSeed.json",
+          "**/ordersSeed.json",
+          resolve(__dirname, "src/ordersSeed.json")
         ]
       }
     },

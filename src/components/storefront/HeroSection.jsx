@@ -13,7 +13,7 @@ export default function HeroSection() {
           High-finish 1-gram gold covering jewellery, trending earring &amp; chain combos, bracelets, and readymade designs crafted for daily elegance and grand occasions.
         </p>
         <a className="button button-dark" href="#shop">
-          Explore our collection <span>↗</span>
+          Explore our collection <span></span>
         </a>
         <p className="hero-note">Rich gold finish · Non-allergic · Everyday friendly prices</p>
       </div>

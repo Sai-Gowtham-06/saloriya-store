@@ -44,6 +44,7 @@ app.get("/api/health", (req, res) => {
 
 // Product Management API Endpoints
 const productsFilePath = path.resolve(__dirname, "src", "productsSeed.json");
+const ordersFilePath = path.resolve(__dirname, "src", "ordersSeed.json");
 
 function readProductsFromFile() {
   try {
@@ -67,8 +68,37 @@ function writeProductsToFile(products) {
   }
 }
 
+function readOrdersFromFile() {
+  try {
+    if (fs.existsSync(ordersFilePath)) {
+      const content = fs.readFileSync(ordersFilePath, "utf8");
+      return JSON.parse(content);
+    }
+  } catch (err) {
+    console.error("Failed to read orders file:", err);
+  }
+  return [];
+}
+
+function writeOrdersToFile(orders) {
+  try {
+    fs.writeFileSync(ordersFilePath, JSON.stringify(orders, null, 2), "utf8");
+    return true;
+  } catch (err) {
+    console.error("Failed to write orders file:", err);
+    return false;
+  }
+}
+
+function sortProductsByColours(list) {
+  if (!Array.isArray(list)) return [];
+  const withColours = list.filter((p) => Array.isArray(p.colours) && p.colours.length > 0 && p.colours.some((c) => c && c.trim().toLowerCase() !== "standard"));
+  const withoutColours = list.filter((p) => !Array.isArray(p.colours) || p.colours.length === 0 || !p.colours.some((c) => c && c.trim().toLowerCase() !== "standard"));
+  return [...withColours, ...withoutColours];
+}
+
 app.get("/api/products", (req, res) => {
-  const products = readProductsFromFile();
+  const products = sortProductsByColours(readProductsFromFile());
   res.json({ success: true, products });
 });
 
@@ -126,8 +156,60 @@ app.post("/api/products", (req, res) => {
     products.unshift({ ...productData, id: newId, created_at: new Date().toISOString() });
   }
 
-  writeProductsToFile(products);
-  res.json({ success: true, products });
+  const sortedProducts = sortProductsByColours(products);
+  writeProductsToFile(sortedProducts);
+  res.json({ success: true, products: sortedProducts });
+});
+
+// Orders Management API Endpoints (Multi-device synchronization)
+app.get("/api/orders", (req, res) => {
+  const orders = readOrdersFromFile();
+  res.json({ success: true, orders });
+});
+
+app.post("/api/orders", (req, res) => {
+  const orderData = req.body;
+  if (!orderData || !orderData.order_id) {
+    return res.status(400).json({ success: false, error: "Invalid order payload" });
+  }
+  const orders = readOrdersFromFile();
+  const existingIdx = orders.findIndex(
+    (o) => (o.order_id && o.order_id === orderData.order_id) || (o.id && o.id === orderData.id)
+  );
+
+  if (existingIdx !== -1) {
+    orders[existingIdx] = { ...orders[existingIdx], ...orderData };
+  } else {
+    orders.unshift(orderData);
+  }
+
+  writeOrdersToFile(orders);
+  console.log(`[Order API] New order registered: #${orderData.order_id} by ${orderData.customer_name}`);
+  res.json({ success: true, order: orderData, ordersCount: orders.length });
+});
+
+app.put("/api/orders/:id/status", (req, res) => {
+  const { id } = req.params;
+  const { status } = req.body;
+  const orders = readOrdersFromFile();
+  const idx = orders.findIndex((o) => o.order_id === id || o.id === id);
+
+  if (idx !== -1) {
+    orders[idx].status = status;
+    orders[idx].updated_at = new Date().toISOString();
+    writeOrdersToFile(orders);
+    return res.json({ success: true, order: orders[idx] });
+  }
+
+  res.status(404).json({ success: false, message: "Order not found" });
+});
+
+app.delete("/api/orders/:id", (req, res) => {
+  const { id } = req.params;
+  let orders = readOrdersFromFile();
+  orders = orders.filter((o) => o.order_id !== id && o.id !== id);
+  writeOrdersToFile(orders);
+  res.json({ success: true, message: "Order deleted" });
 });
 
 // OTP Endpoints
@@ -147,7 +229,7 @@ if (process.env.NODE_ENV === "production") {
 }
 
 app.listen(PORT, () => {
-  console.log(`✨ SALORIYA Express Backend running on http://localhost:${PORT}`);
+  console.log(` SALORIYA Express Backend running on http://localhost:${PORT}`);
 });
 
 export default app;

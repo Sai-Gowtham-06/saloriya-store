@@ -43,3 +43,71 @@ export function getColourImage(p, colourName = "", colourIndex = 0) {
   }
   return urls[0] || "";
 }
+
+export function hasProductColours(product) {
+  if (!product) return false;
+  const colours = Array.isArray(product.colours) ? product.colours : [];
+  return colours.some((c) => c && c.trim() && c.trim().toLowerCase() !== "standard");
+}
+
+export function sortProductsByColourAvailability(productList) {
+  if (!Array.isArray(productList)) return [];
+  const withColours = [];
+  const withoutColours = [];
+
+  productList.forEach((p) => {
+    if (hasProductColours(p)) {
+      withColours.push(p);
+    } else {
+      withoutColours.push(p);
+    }
+  });
+
+  return [...withColours, ...withoutColours];
+}
+
+export function getColourForImage(product, imageUrl = "", imageIndex = 0) {
+  if (!product) return "";
+  const colours = Array.isArray(product.colours) ? product.colours : [];
+  if (!colours.length) return "";
+
+  // 1. If imageUrl has a colour name in its filename/URL
+  if (imageUrl) {
+    let cleanUrl = "";
+    try {
+      cleanUrl = decodeURIComponent(imageUrl).toLowerCase();
+    } catch {
+      cleanUrl = imageUrl.toLowerCase();
+    }
+    // Sort colours by length descending so longer compound names match first (e.g. "sky blue" before "blue")
+    const sortedColours = [...colours].sort((a, b) => b.length - a.length);
+    const matched = sortedColours.find((c) => {
+      const cleanColour = (c || "").trim().toLowerCase();
+      if (!cleanColour || cleanColour === "standard") return false;
+      return cleanUrl.includes(cleanColour);
+    });
+    if (matched) return matched;
+
+    // Check common jewellery stone colour aliases
+    if (cleanUrl.includes("ruby") && colours.some((c) => c.toLowerCase() === "red")) {
+      return colours.find((c) => c.toLowerCase() === "red");
+    }
+    if (cleanUrl.includes("emerald") && colours.some((c) => c.toLowerCase() === "green")) {
+      return colours.find((c) => c.toLowerCase() === "green");
+    }
+    if (cleanUrl.includes("teal") && colours.some((c) => c.toLowerCase().includes("blue"))) {
+      return colours.find((c) => c.toLowerCase().includes("blue"));
+    }
+    if (cleanUrl.includes("amethyst") && colours.some((c) => c.toLowerCase().includes("violet") || c.toLowerCase().includes("purple"))) {
+      return colours.find((c) => c.toLowerCase().includes("violet") || c.toLowerCase().includes("purple"));
+    }
+  }
+
+  // 2. Direct index mapping if within bounds
+  if (typeof imageIndex === "number" && imageIndex >= 0 && imageIndex < colours.length) {
+    return colours[imageIndex];
+  }
+
+  // 3. Fallback
+  return colours[0] || "";
+}

@@ -45,7 +45,18 @@ export default function AdminPage() {
   };
 
   const loadOrders = async () => {
-    let list = [];
+    let apiList = [];
+    try {
+      const res = await fetch("/api/orders");
+      const json = await res.json();
+      if (json?.success && Array.isArray(json.orders)) {
+        apiList = json.orders;
+      }
+    } catch (e) {
+      console.warn("Central /api/orders fetch warning:", e);
+    }
+
+    let sbList = [];
     if (isSupabaseConfigured) {
       try {
         const { data, error } = await supabase
@@ -53,19 +64,35 @@ export default function AdminPage() {
           .select("*")
           .order("created_at", { ascending: false });
         if (!error && Array.isArray(data)) {
-          list = data;
+          sbList = data.map((o) => ({
+            ...o,
+            order_id: o.order_id || (o.id ? `SLR-${String(o.id).slice(-6).toUpperCase()}` : `SLR-${Date.now().toString().slice(-6)}`),
+            customer_phone: o.customer_phone || o.phone || "",
+            delivery_address: o.delivery_address || (typeof o.address === "object" ? (o.address?.full || `${o.address?.street || ""}, ${o.address?.city || ""}`) : String(o.address || "")),
+            status: o.status || o.order_status || "confirmed"
+          }));
         }
       } catch (e) {
         console.warn("Supabase orders query error:", e);
       }
     }
 
-    if (!list.length) {
-      try {
-        const local = JSON.parse(localStorage.getItem("saloriya_admin_orders") || "[]");
-        if (Array.isArray(local)) list = local;
-      } catch (e) {}
-    }
+    let localList = [];
+    try {
+      const local = JSON.parse(localStorage.getItem("saloriya_admin_orders") || "[]");
+      if (Array.isArray(local)) localList = local;
+    } catch (e) {}
+
+    // Merge and deduplicate across Central API, Supabase, and localStorage
+    const mergedMap = new Map();
+    [...apiList, ...sbList, ...localList].forEach((o) => {
+      const key = String(o.order_id || o.id);
+      if (key && !mergedMap.has(key)) {
+        mergedMap.set(key, o);
+      }
+    });
+
+    let list = Array.from(mergedMap.values());
 
     const deletedIds = getDeletedOrderIds();
     if (deletedIds.length > 0) {
@@ -77,6 +104,11 @@ export default function AdminPage() {
         return true;
       });
     }
+
+    // Keep localStorage synchronized with latest unified list
+    try {
+      localStorage.setItem("saloriya_admin_orders", JSON.stringify(list));
+    } catch (e) {}
 
     setOrders(list);
   };
@@ -183,7 +215,7 @@ export default function AdminPage() {
               className={`admin-tab ${activeTab === "products" ? "active" : ""}`}
               onClick={() => setActiveTab("products")}
             >
-              <span className="tab-icon">✨</span>
+              <span className="tab-icon"></span>
               <span>Product Studio</span>
             </button>
             <button

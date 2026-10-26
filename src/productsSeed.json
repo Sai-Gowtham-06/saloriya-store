@@ -1,5 +1,23 @@
 [
   {
+    "name": "Emerald Royalty Choker Necklace",
+    "slug": "emerald-royalty-choker-necklace",
+    "description": "",
+    "category": "Combos",
+    "price_paise": 89900,
+    "stock": 8,
+    "colours": [
+      "EMERALD GREEN",
+      "RUBY RED"
+    ],
+    "image_urls": [],
+    "images": [],
+    "is_published": true,
+    "updated_at": "2026-10-26T17:03:24.813Z",
+    "id": "89810964-6714-4df2-a650-8b74e69d6eef",
+    "created_at": "2026-10-26T17:03:26.164Z"
+  },
+  {
     "id": "2fb78137-672d-40f1-b058-9f3803f9642e",
     "name": "Royal Square Pearl Jhumka Earrings",
     "slug": "royal-pearl-antique-gold-jhumka-earrings",

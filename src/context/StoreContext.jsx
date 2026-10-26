@@ -91,7 +91,7 @@ export function StoreProvider({ children }) {
       }
     }
 
-    // 3. Try LocalStorage
+    // 3. Fallback to LocalStorage or seed if network returned nothing
     if (!loaded || loaded.length === 0) {
       try {
         const local = JSON.parse(localStorage.getItem("saloriya_admin_products") || "[]");
@@ -104,21 +104,34 @@ export function StoreProvider({ children }) {
       } catch (e) {}
     }
 
-    if (loaded && loaded.length > 0) {
-      const cleanList = sortProductsByColourAvailability(filterOutDeleted(loaded));
-      setProducts(cleanList);
-      try {
-        localStorage.setItem("saloriya_admin_products", JSON.stringify(cleanList));
-      } catch (e) {}
-    } else {
-      const initial = sortProductsByColourAvailability(
-        filterOutDeleted(productsSeed.map((p) => normalizeProduct(p)))
-      );
-      setProducts(initial);
-      try {
-        localStorage.setItem("saloriya_admin_products", JSON.stringify(initial));
-      } catch (e) {}
+    if (!loaded || loaded.length === 0) {
+      loaded = productsSeed.map((p) => normalizeProduct(p));
     }
+
+    // 4. SMART MERGE: Ensure newly added pieces in localStorage are never wiped out
+    try {
+      const local = JSON.parse(localStorage.getItem("saloriya_admin_products") || "[]");
+      if (Array.isArray(local) && local.length > 0) {
+        local.forEach((localProd) => {
+          if (!localProd || !localProd.name) return;
+          const exists = loaded.some(
+            (srv) =>
+              (localProd.id && srv.id === localProd.id) ||
+              (localProd.slug && srv.slug === localProd.slug)
+          );
+          if (!exists) {
+            loaded.unshift(normalizeProduct(localProd));
+          }
+        });
+      }
+    } catch (e) {}
+
+    const cleanList = sortProductsByColourAvailability(filterOutDeleted(loaded));
+    setProducts(cleanList);
+    try {
+      localStorage.setItem("saloriya_admin_products", JSON.stringify(cleanList));
+    } catch (e) {}
+    return cleanList.length;
   };
 
   useEffect(() => {
@@ -275,18 +288,102 @@ export function StoreProvider({ children }) {
 
   // Action: Save / Create Product
   const saveProduct = async (productData) => {
-    const existing = products.find((p) => (productData.id && p.id === productData.id) || (productData.slug && p.slug === productData.slug));
-    const id = productData.id || existing?.id || `prod_${Date.now()}`;
-    const normalized = normalizeProduct({ ...productData, id });
+    const existing = products.find(
+      (p) =>
+        (productData.id && p.id === productData.id) ||
+        (productData.slug && p.slug === productData.slug)
+    );
+
+    const isValidUuid = (val) =>
+      typeof val === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val);
+
+    const initialId =
+      productData.id ||
+      existing?.id ||
+      (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `prod_${Date.now()}`);
+
+    let normalized = normalizeProduct({ ...productData, id: initialId });
 
     // Untrack from deleted if re-created
     try {
-      const deleted = getDeletedIds().filter((d) => d !== id && (!normalized.slug || d !== normalized.slug));
+      const deleted = getDeletedIds().filter(
+        (d) => d !== initialId && (!normalized.slug || d !== normalized.slug)
+      );
       localStorage.setItem("saloriya_deleted_product_ids", JSON.stringify(deleted));
     } catch (e) {}
 
+    // Supabase sync
+    if (isSupabaseConfigured) {
+      try {
+        const cleanSupabaseRecord = {
+          name: normalized.name,
+          slug: normalized.slug,
+          description: normalized.description || "",
+          category: normalized.category || "Combos",
+          price_paise: Number(normalized.price_paise) || 0,
+          stock: Number(normalized.stock) || 0,
+          colours: Array.isArray(normalized.colours) ? normalized.colours : [],
+          image_urls: Array.isArray(normalized.image_urls) ? normalized.image_urls : [],
+          is_published: normalized.is_published !== false,
+          updated_at: new Date().toISOString()
+        };
+
+        const targetId = productData.id || existing?.id;
+        if (targetId && isValidUuid(targetId)) {
+          const { error: updErr } = await supabase
+            .from("products")
+            .update(cleanSupabaseRecord)
+            .eq("id", targetId);
+          if (updErr && normalized.slug) {
+            await supabase
+              .from("products")
+              .update(cleanSupabaseRecord)
+              .eq("slug", normalized.slug);
+          }
+        } else if (normalized.slug) {
+          const { data: existingRow } = await supabase
+            .from("products")
+            .select("id")
+            .eq("slug", normalized.slug)
+            .maybeSingle();
+
+          if (existingRow?.id) {
+            await supabase
+              .from("products")
+              .update(cleanSupabaseRecord)
+              .eq("id", existingRow.id);
+            normalized = { ...normalized, id: existingRow.id };
+          } else {
+            const { data: newRow, error: insErr } = await supabase
+              .from("products")
+              .insert([cleanSupabaseRecord])
+              .select()
+              .single();
+            if (!insErr && newRow?.id) {
+              normalized = { ...normalized, id: newRow.id };
+            }
+          }
+        } else {
+          const { data: newRow, error: insErr } = await supabase
+            .from("products")
+            .insert([cleanSupabaseRecord])
+            .select()
+            .single();
+          if (!insErr && newRow?.id) {
+            normalized = { ...normalized, id: newRow.id };
+          }
+        }
+      } catch (sbErr) {
+        console.warn("Supabase save product warning:", sbErr);
+      }
+    }
+
+    // 1. Update React state
     setProducts((prev) => {
-      const idx = prev.findIndex((p) => p.id === id || (normalized.slug && p.slug === normalized.slug));
+      const idx = prev.findIndex(
+        (p) => p.id === normalized.id || (normalized.slug && p.slug === normalized.slug)
+      );
       let next;
       if (idx !== -1) {
         next = [...prev];
@@ -297,10 +394,12 @@ export function StoreProvider({ children }) {
       return sortProductsByColourAvailability(next);
     });
 
-    // LocalStorage sync
+    // 2. LocalStorage sync
     try {
       const local = JSON.parse(localStorage.getItem("saloriya_admin_products") || "[]");
-      const idx = local.findIndex((p) => p.id === id || (normalized.slug && p.slug === normalized.slug));
+      const idx = local.findIndex(
+        (p) => p.id === normalized.id || (normalized.slug && p.slug === normalized.slug)
+      );
       if (idx !== -1) {
         local[idx] = normalized;
       } else {
@@ -309,7 +408,7 @@ export function StoreProvider({ children }) {
       localStorage.setItem("saloriya_admin_products", JSON.stringify(local));
     } catch (e) {}
 
-    // API sync
+    // 3. API sync
     try {
       await fetch("/api/products", {
         method: "POST",
@@ -318,30 +417,15 @@ export function StoreProvider({ children }) {
       });
     } catch (e) {}
 
-    // Supabase sync
-    if (isSupabaseConfigured) {
-      try {
-        if (productData.id || existing?.id) {
-          const targetId = productData.id || existing?.id;
-          const { error: updErr } = await supabase.from("products").update(normalized).eq("id", targetId);
-          if (updErr && normalized.slug) {
-            await supabase.from("products").update(normalized).eq("slug", normalized.slug);
-          }
-        } else {
-          await supabase.from("products").insert([normalized]);
-        }
-      } catch (e) {}
-    }
-
     return normalized;
   };
 
   // Action: Refresh Catalog
   const refreshCatalog = async () => {
     setLoading(true);
-    await fetchProducts();
+    const count = await fetchProducts();
     setLoading(false);
-    return products.length;
+    return typeof count === "number" ? count : products.length;
   };
 
   // Format currency helper

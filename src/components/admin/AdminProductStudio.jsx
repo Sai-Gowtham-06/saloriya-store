@@ -122,7 +122,7 @@ export default function AdminProductStudio({ products, onProductChanged, editing
           const ctx = canvas.getContext("2d");
           ctx.drawImage(img, 0, 0, w, h);
           const compressed = canvas.toDataURL("image/jpeg", 0.8);
-          setImageList((prev) => [...prev, { type: "data", url: compressed }]);
+          setImageList((prev) => [...prev, { type: "data", url: compressed, file }]);
         };
         img.src = ev.target.result;
       };
@@ -150,7 +150,38 @@ export default function AdminProductStudio({ products, onProductChanged, editing
     if (!formData.name.trim()) return;
 
     setSaving(true);
-    setFormMsg("Saving piece to store…");
+    setFormMsg("Processing images…");
+
+    // Upload any new image files to Supabase Storage if configured
+    const finalImageUrls = [];
+    for (let i = 0; i < imageList.length; i++) {
+      const item = imageList[i];
+      if (item.file && isSupabaseConfigured && supabase) {
+        setFormMsg(`Uploading photo ${i + 1} of ${imageList.length} to storage…`);
+        try {
+          const safeName = item.file.name.replace(/[^a-zA-Z0-9._-]/g, "-");
+          const path = `${Date.now()}-${safeName}`;
+          const { error: uploadError } = await supabase.storage
+            .from("product-images")
+            .upload(path, item.file, { upsert: false, contentType: item.file.type });
+
+          if (!uploadError) {
+            const { data: urlData } = supabase.storage
+              .from("product-images")
+              .getPublicUrl(path);
+            if (urlData?.publicUrl) {
+              finalImageUrls.push(urlData.publicUrl);
+              continue;
+            }
+          }
+        } catch (uploadErr) {
+          console.warn("Storage upload fallback:", uploadErr);
+        }
+      }
+      finalImageUrls.push(item.url);
+    }
+
+    setFormMsg("Saving piece to store & catalogue…");
 
     const slug = formData.slug.trim() || formData.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
     const coloursArray = formData.colours
@@ -160,7 +191,6 @@ export default function AdminProductStudio({ products, onProductChanged, editing
 
     const pricePaise = Math.round(parseFloat(formData.priceInr || "0") * 100);
     const stockVal = parseInt(formData.stock || "0", 10);
-    const finalImageUrls = imageList.map((item) => item.url);
 
     const payload = {
       ...(formData.id ? { id: formData.id } : {}),
@@ -186,9 +216,11 @@ export default function AdminProductStudio({ products, onProductChanged, editing
 
     setSaving(false);
     setFormMsg("✓ Piece successfully saved and updated in catalogue!");
-    setTimeout(() => {
+    setTimeout(async () => {
       handleCloseForm();
-      if (onProductChanged) onProductChanged();
+      if (onProductChanged) {
+        await onProductChanged();
+      }
     }, 600);
   };
 

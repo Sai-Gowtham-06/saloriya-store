@@ -219,37 +219,120 @@ export default async function handler(req, res) {
     // 5. POST /api/products (Create or Update Product)
     if (req.method === "POST") {
       const body = req.body || {};
-      const targetId = body.id || `prod_${Date.now()}`;
       const targetSlug = body.slug;
+      const targetId = body.id;
+
+      const isValidUuid = (val) =>
+        typeof val === "string" &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(val);
+
+      const cleanRecord = {
+        name: String(body.name || "").trim(),
+        slug: String(body.slug || "").trim(),
+        description: String(body.description || "").trim(),
+        category: String(body.category || "Combos").trim(),
+        price_paise: Number(body.price_paise) || 0,
+        stock: Math.max(0, parseInt(body.stock, 10) || 0),
+        colours: Array.isArray(body.colours) ? body.colours : [],
+        image_urls: Array.isArray(body.image_urls) ? body.image_urls : (Array.isArray(body.images) ? body.images : []),
+        is_published: body.is_published !== false,
+        updated_at: new Date().toISOString()
+      };
+
+      if (isValidUuid(targetId)) {
+        cleanRecord.id = targetId;
+      }
+
+      // Sync with Supabase
+      if (SUPABASE_URL && SUPABASE_KEY) {
+        try {
+          if (isValidUuid(targetId)) {
+            await fetch(`${SUPABASE_URL}/rest/v1/products?id=eq.${encodeURIComponent(targetId)}`, {
+              method: "PATCH",
+              headers: {
+                apikey: SUPABASE_KEY,
+                Authorization: `Bearer ${SUPABASE_KEY}`,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify(cleanRecord)
+            });
+          } else if (targetSlug) {
+            const checkRes = await fetch(`${SUPABASE_URL}/rest/v1/products?slug=eq.${encodeURIComponent(targetSlug)}&select=id`, {
+              headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+            });
+            const existingRows = checkRes.ok ? await checkRes.json() : [];
+            if (Array.isArray(existingRows) && existingRows.length > 0 && existingRows[0]?.id) {
+              await fetch(`${SUPABASE_URL}/rest/v1/products?id=eq.${encodeURIComponent(existingRows[0].id)}`, {
+                method: "PATCH",
+                headers: {
+                  apikey: SUPABASE_KEY,
+                  Authorization: `Bearer ${SUPABASE_KEY}`,
+                  "Content-Type": "application/json"
+                },
+                body: JSON.stringify(cleanRecord)
+              });
+              cleanRecord.id = existingRows[0].id;
+            } else {
+              const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/products`, {
+                method: "POST",
+                headers: {
+                  apikey: SUPABASE_KEY,
+                  Authorization: `Bearer ${SUPABASE_KEY}`,
+                  "Content-Type": "application/json",
+                  Prefer: "return=representation"
+                },
+                body: JSON.stringify(cleanRecord)
+              });
+              if (insertRes.ok) {
+                const inserted = await insertRes.json();
+                if (Array.isArray(inserted) && inserted[0]?.id) {
+                  cleanRecord.id = inserted[0].id;
+                }
+              }
+            }
+          } else {
+            const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/products`, {
+              method: "POST",
+              headers: {
+                apikey: SUPABASE_KEY,
+                Authorization: `Bearer ${SUPABASE_KEY}`,
+                "Content-Type": "application/json",
+                Prefer: "return=representation"
+              },
+              body: JSON.stringify(cleanRecord)
+            });
+            if (insertRes.ok) {
+              const inserted = await insertRes.json();
+              if (Array.isArray(inserted) && inserted[0]?.id) {
+                cleanRecord.id = inserted[0].id;
+              }
+            }
+          }
+        } catch (sbApiErr) {
+          console.warn("Supabase products sync warning in api/products:", sbApiErr);
+        }
+      }
 
       let products = readProducts();
-      const idx = products.findIndex((p) => (targetId && p.id === targetId) || (targetSlug && p.slug === targetSlug));
+      const effectiveId = cleanRecord.id || targetId || `prod_${Date.now()}`;
+      const fullRecord = {
+        ...cleanRecord,
+        id: effectiveId,
+        images: cleanRecord.image_urls
+      };
+
+      const idx = products.findIndex((p) => (effectiveId && p.id === effectiveId) || (targetSlug && p.slug === targetSlug));
 
       if (idx !== -1) {
-        products[idx] = { ...products[idx], ...body, updated_at: new Date().toISOString() };
+        products[idx] = { ...products[idx], ...fullRecord };
       } else {
-        products.unshift({ ...body, id: targetId, created_at: new Date().toISOString() });
+        products.unshift(fullRecord);
       }
 
       const sorted = sortProductsByColours(products);
       writeProducts(sorted);
 
-      if (SUPABASE_URL && SUPABASE_KEY) {
-        try {
-          await fetch(`${SUPABASE_URL}/rest/v1/products`, {
-            method: "POST",
-            headers: {
-              apikey: SUPABASE_KEY,
-              Authorization: `Bearer ${SUPABASE_KEY}`,
-              "Content-Type": "application/json",
-              Prefer: "resolution=merge-duplicates"
-            },
-            body: JSON.stringify(body)
-          });
-        } catch (e) {}
-      }
-
-      return res.status(200).json({ success: true, products: sorted });
+      return res.status(200).json({ success: true, products: sorted, product: fullRecord });
     }
 
     return res.status(405).json({ success: false, error: "Method not allowed" });

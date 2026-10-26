@@ -3,10 +3,12 @@
 export function normalizeProduct(p, seedFallback = null) {
   let urls = [];
   if (Array.isArray(p.image_urls) && p.image_urls.length > 0) {
-    urls = p.image_urls.filter((u) => u && u !== "/logo.png");
+    const nonLogo = p.image_urls.filter((u) => u && u !== "/logo.png");
+    urls = nonLogo.length > 0 ? nonLogo : p.image_urls.filter(Boolean);
   }
   if (!urls.length && Array.isArray(p.images) && p.images.length > 0) {
-    urls = p.images.filter((u) => u && u !== "/logo.png");
+    const nonLogo = p.images.filter((u) => u && u !== "/logo.png");
+    urls = nonLogo.length > 0 ? nonLogo : p.images.filter(Boolean);
   }
   if (!urls.length && seedFallback && Array.isArray(seedFallback.image_urls) && seedFallback.image_urls.length > 0) {
     urls = seedFallback.image_urls;

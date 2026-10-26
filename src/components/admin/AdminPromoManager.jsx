@@ -38,6 +38,8 @@ export default function AdminPromoManager({ onPromosUpdated }) {
   const [msg, setMsg] = useState("");
   const [deleteTargetPromo, setDeleteTargetPromo] = useState(null);
   const [isDeletingPromo, setIsDeletingPromo] = useState(false);
+  const [isRefreshingPromos, setIsRefreshingPromos] = useState(false);
+  const [refreshToast, setRefreshToast] = useState("");
 
   const getDeletedPromoCodes = () => {
     try {
@@ -136,6 +138,21 @@ export default function AdminPromoManager({ onPromosUpdated }) {
   useEffect(() => {
     loadPromos();
   }, []);
+
+  const handleRefreshPromos = async () => {
+    setIsRefreshingPromos(true);
+    setRefreshToast("");
+    try {
+      await loadPromos();
+      setRefreshToast("✓ Codes refreshed successfully");
+      setTimeout(() => setRefreshToast(""), 3000);
+    } catch (e) {
+      setRefreshToast("Codes refreshed");
+      setTimeout(() => setRefreshToast(""), 2000);
+    } finally {
+      setIsRefreshingPromos(false);
+    }
+  };
 
   const handleAddPromo = async (e) => {
     e.preventDefault();
@@ -258,9 +275,31 @@ export default function AdminPromoManager({ onPromosUpdated }) {
               Create and manage voucher codes to give customers complimentary free delivery (waives the ₹50.00 courier fee).
             </p>
           </div>
-          <button className="button button-outline" type="button" onClick={loadPromos}>
-            ↻ Refresh Codes
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            {refreshToast && (
+              <span style={{ fontSize: "12px", color: "var(--wine)", fontWeight: 600 }}>
+                {refreshToast}
+              </span>
+            )}
+            <button
+              className="button button-outline"
+              type="button"
+              onClick={handleRefreshPromos}
+              disabled={isRefreshingPromos}
+              style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+            >
+              <span
+                style={{
+                  display: "inline-block",
+                  transform: isRefreshingPromos ? "rotate(360deg)" : "none",
+                  transition: "transform 0.6s ease"
+                }}
+              >
+                ↻
+              </span>
+              <span>{isRefreshingPromos ? "Refreshing…" : "Refresh Codes"}</span>
+            </button>
+          </div>
         </div>
 
         {/* Promo Creator Card */}

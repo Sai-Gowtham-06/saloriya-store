@@ -11,6 +11,24 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
   const [deleteTargetOrder, setDeleteTargetOrder] = useState(null);
   const [isDeletingOrder, setIsDeletingOrder] = useState(false);
   const [orderToast, setOrderToast] = useState("");
+  const [isRefreshingOrders, setIsRefreshingOrders] = useState(false);
+
+  const handleRefreshOrders = async () => {
+    setIsRefreshingOrders(true);
+    setOrderToast("");
+    try {
+      if (onOrderUpdated) {
+        await onOrderUpdated();
+      }
+      setOrderToast("✓ Orders refreshed successfully");
+      setTimeout(() => setOrderToast(""), 3000);
+    } catch (e) {
+      setOrderToast("Orders refreshed");
+      setTimeout(() => setOrderToast(""), 2000);
+    } finally {
+      setIsRefreshingOrders(false);
+    }
+  };
 
   const formatMoney = (paise) => {
     return new Intl.NumberFormat("en-IN", {
@@ -258,9 +276,38 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
           </button>
         </div>
 
-        <div className="orders-toolbar-actions">
-          <button type="button" className="button button-outline button-small" onClick={onOrderUpdated}>
-            ↻ Refresh Orders
+        <div className="orders-toolbar-actions" style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          {orderToast && (
+            <span
+              style={{
+                fontSize: "12px",
+                color: "var(--wine)",
+                fontWeight: 600,
+                background: "rgba(134,30,56,0.08)",
+                padding: "4px 10px",
+                borderRadius: "4px"
+              }}
+            >
+              {orderToast}
+            </span>
+          )}
+          <button
+            type="button"
+            className="button button-outline button-small"
+            onClick={handleRefreshOrders}
+            disabled={isRefreshingOrders}
+            style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+          >
+            <span
+              style={{
+                display: "inline-block",
+                transform: isRefreshingOrders ? "rotate(360deg)" : "none",
+                transition: "transform 0.6s ease"
+              }}
+            >
+              ↻
+            </span>
+            <span>{isRefreshingOrders ? "Refreshing…" : "Refresh Orders"}</span>
           </button>
           {onOpenRecordOrder && (
             <button type="button" className="button button-dark button-small" onClick={onOpenRecordOrder}>

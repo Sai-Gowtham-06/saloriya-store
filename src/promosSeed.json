@@ -1,0 +1,44 @@
+[
+  {
+    "id": "a020d142-4582-42e7-81d3-03d8c924292e",
+    "code": "FREEDELIVERY",
+    "discount_type": "free_delivery",
+    "discount_value": 50,
+    "min_order_paise": 0,
+    "max_uses": null,
+    "uses_count": 0,
+    "is_active": true,
+    "description": "Complimentary Free Transport & Packaging",
+    "created_at": "2026-10-26T15:16:20.467614+00:00",
+    "expires_at": null,
+    "amount": 50
+  },
+  {
+    "id": "c4b2e6f6-37ac-408d-8265-da7ddd2cc96c",
+    "code": "SALORIYA50",
+    "discount_type": "fixed_amount",
+    "discount_value": 50,
+    "min_order_paise": 0,
+    "max_uses": null,
+    "uses_count": 0,
+    "is_active": true,
+    "description": "Flat ₹50 OFF Special Promo",
+    "created_at": "2026-10-26T15:22:36.143603+00:00",
+    "expires_at": null,
+    "amount": 50
+  },
+  {
+    "id": "529e67bb-412c-4a6d-83d2-366cf816794a",
+    "code": "GOLD2026",
+    "discount_type": "fixed_amount",
+    "discount_value": 50,
+    "min_order_paise": 0,
+    "max_uses": null,
+    "uses_count": 0,
+    "is_active": true,
+    "description": "Special ₹50 OFF Jewellery Voucher",
+    "created_at": "2026-10-26T15:22:36.329755+00:00",
+    "expires_at": null,
+    "amount": 50
+  }
+]

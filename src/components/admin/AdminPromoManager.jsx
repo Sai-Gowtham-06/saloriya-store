@@ -3,7 +3,30 @@ import { supabase, isSupabaseConfigured } from "../../supabase.js";
 import AdminDeleteConfirmModal from "./AdminDeleteConfirmModal.jsx";
 
 const DEFAULT_PROMOS = [
-  { code: "FREEDELIVERY", discount_type: "free_delivery", amount: 50, description: "Complimentary Free Transport & Packaging (Waives ₹50 delivery)", is_active: true }
+  {
+    code: "FREEDELIVERY",
+    discount_type: "free_delivery",
+    amount: 50,
+    discount_value: 50,
+    description: "Complimentary Free Transport & Packaging (Waives ₹50 delivery)",
+    is_active: true
+  },
+  {
+    code: "SALORIYA50",
+    discount_type: "fixed_amount",
+    amount: 50,
+    discount_value: 50,
+    description: "Flat ₹50 OFF Special Promo",
+    is_active: true
+  },
+  {
+    code: "GOLD2026",
+    discount_type: "fixed_amount",
+    amount: 50,
+    discount_value: 50,
+    description: "Special ₹50 OFF Jewellery Voucher",
+    is_active: true
+  }
 ];
 
 export default function AdminPromoManager({ onPromosUpdated }) {
@@ -28,42 +51,63 @@ export default function AdminPromoManager({ onPromosUpdated }) {
     let list = [];
     const deletedCodes = getDeletedPromoCodes();
 
-    if (isSupabaseConfigured) {
+    // 1. First-Party Central API check
+    try {
+      const res = await fetch("/api/promos");
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.promos) && data.promos.length > 0) {
+          list = data.promos.map((p) => ({
+            ...p,
+            code: String(p.code || "").trim().toUpperCase(),
+            amount: Number(p.discount_value ?? p.amount ?? 50)
+          }));
+        }
+      }
+    } catch (e) {}
+
+    // 2. Query live Supabase database
+    if (!list.length && isSupabaseConfigured) {
       try {
-        const { data, error } = await supabase.from("promo_codes").select("*").order("created_at", { ascending: false });
+        const { data, error } = await supabase
+          .from("promo_codes")
+          .select("*")
+          .order("created_at", { ascending: false });
         if (!error && Array.isArray(data) && data.length > 0) {
           list = data.map((p) => ({
             ...p,
+            code: String(p.code || "").trim().toUpperCase(),
             amount: Number(p.discount_value ?? p.amount ?? 50)
           }));
         }
       } catch (e) {}
     }
 
+    // 3. Fallback to localStorage
     if (!list.length) {
       try {
         const local = JSON.parse(localStorage.getItem("saloriya_admin_promo_codes") || "[]");
         if (Array.isArray(local) && local.length > 0) {
-          // If local contains only the old 3 default codes, keep only FREEDELIVERY
-          const isOld3Defaults = local.length === 3 &&
-            local.some((p) => p.code === "FREEDELIVERY") &&
-            local.some((p) => p.code === "SALORIYA50") &&
-            local.some((p) => p.code === "GOLD2026");
-          list = (isOld3Defaults ? DEFAULT_PROMOS : local).map((p) => ({
+          list = local.map((p) => ({
             ...p,
+            code: String(p.code || "").trim().toUpperCase(),
             amount: Number(p.discount_value ?? p.amount ?? 50)
           }));
         }
       } catch (e) {}
     }
 
-    // Filter out explicitly deleted codes
-    if (deletedCodes.length > 0) {
-      list = list.filter((p) => !deletedCodes.includes(p.code));
+    // 4. Default seed promos fallback
+    if (!list.length) {
+      list = DEFAULT_PROMOS;
     }
 
-    if (!list.length && !deletedCodes.includes("FREEDELIVERY") && !localStorage.getItem("saloriya_promo_initialized")) {
-      list = DEFAULT_PROMOS;
+    // Filter out explicitly deleted codes only if deletedCodes exists and list has non-deleted
+    if (deletedCodes.length > 0) {
+      const filtered = list.filter((p) => !deletedCodes.includes(p.code));
+      if (filtered.length > 0) {
+        list = filtered;
+      }
     }
 
     // Cross-device sync: Ensure valid promo codes are present in Supabase so mobile users get them immediately
@@ -74,7 +118,7 @@ export default function AdminPromoManager({ onPromosUpdated }) {
             code: item.code,
             discount_type: item.discount_type || "free_delivery",
             discount_value: Number(item.discount_value ?? item.amount ?? 50),
-            description: item.description || "Special Promo",
+            description: item.description || "Active Voucher",
             is_active: item.is_active !== false
           }], { onConflict: "code" });
         }
@@ -124,7 +168,16 @@ export default function AdminPromoManager({ onPromosUpdated }) {
       localStorage.setItem("saloriya_promo_initialized", "true");
     } catch (e) {}
 
-    // Save to Supabase using correct column name discount_value
+    // 1. Save to Central API
+    try {
+      await fetch("/api/promos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newPromo)
+      });
+    } catch (e) {}
+
+    // 2. Save to Supabase using correct column name discount_value
     try {
       if (isSupabaseConfigured) {
         await supabase.from("promo_codes").upsert([{
@@ -162,14 +215,21 @@ export default function AdminPromoManager({ onPromosUpdated }) {
       localStorage.setItem("saloriya_promo_initialized", "true");
     } catch (e) {}
 
-    // 2. Delete from Supabase
+    // 2. Delete from Central API
+    try {
+      await fetch(`/api/promos?code=${encodeURIComponent(code)}`, {
+        method: "DELETE"
+      });
+    } catch (e) {}
+
+    // 3. Delete from Supabase
     try {
       if (isSupabaseConfigured) {
         await supabase.from("promo_codes").delete().ilike("code", code);
       }
     } catch (e) {}
 
-    // 3. Update localStorage and local state
+    // 4. Update localStorage and local state
     const updated = promos.filter((p) => p.code !== code);
     try {
       localStorage.setItem("saloriya_admin_promo_codes", JSON.stringify(updated));

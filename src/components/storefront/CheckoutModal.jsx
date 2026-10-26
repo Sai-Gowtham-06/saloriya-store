@@ -240,32 +240,29 @@ export default function CheckoutModal() {
     setPromoChecking(true);
 
     try {
-      // 1. Check if the promo code was explicitly deleted or removed by admin
-      const deletedCodes = (() => {
-        try {
-          return JSON.parse(localStorage.getItem("saloriya_deleted_promo_codes") || "[]");
-        } catch (e) {
-          return [];
-        }
-      })();
-
-      const isDeleted = deletedCodes.some(
-        (d) =>
-          d.toUpperCase() === cleanCode ||
-          d.toUpperCase().replace(/[^A-Z0-9]/g, "") === alphanumericCode
-      );
-
-      if (isDeleted) {
-        setPromoError(`Promo code "${cleanCode}" is invalid or expired.`);
-        setAppliedPromo(null);
-        setPromoSuccess("");
-        return;
-      }
-
       let found = null;
 
-      // 2. Query live database if Supabase is configured (with 2.2s timeout fallback)
-      if (isSupabaseConfigured) {
+      // 1. First-Party Central API check (/api/promos?code=...)
+      // Guarantees seamless functionality on deployed production (Vercel) across all mobile devices
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3500);
+        const apiRes = await fetch(`/api/promos?code=${encodeURIComponent(cleanCode)}`, {
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        if (apiRes.ok) {
+          const apiData = await apiRes.json();
+          if (apiData && apiData.valid && apiData.promo) {
+            found = apiData.promo;
+          }
+        }
+      } catch (apiErr) {
+        // Fall back to direct database and offline lists
+      }
+
+      // 2. Query live database if Supabase is configured
+      if (!found && isSupabaseConfigured) {
         try {
           const fetchSupabase = async () => {
             const { data, error } = await supabase
@@ -307,7 +304,7 @@ export default function CheckoutModal() {
             };
           }
         } catch (e) {
-          console.warn("Supabase promo check fallback:", e);
+          // Fallback to local
         }
       }
 
@@ -367,7 +364,7 @@ export default function CheckoutModal() {
             b.code === alphanumericCode ||
             b.code.toLowerCase() === rawInput.toLowerCase()
         );
-        if (builtin && !deletedCodes.some((d) => d.toUpperCase() === builtin.code)) {
+        if (builtin) {
           found = { ...builtin };
         }
       }
@@ -375,7 +372,7 @@ export default function CheckoutModal() {
       // 5. Expiration check
       if (found) {
         const exp = found.expires_at || found.expiry_date || found.expires;
-        if (exp) {
+        if (exp && typeof exp === "string" && exp.trim() && exp !== "null" && exp !== "undefined") {
           const expDate = new Date(exp);
           if (!isNaN(expDate.getTime()) && expDate.getTime() < Date.now()) {
             setAppliedPromo(null);
@@ -395,7 +392,7 @@ export default function CheckoutModal() {
       }
 
       // 7. Apply valid promo code
-      if (found && !deletedCodes.includes(found.code.toUpperCase())) {
+      if (found) {
         const discountVal = parseFloat(found.discount_value ?? found.amount ?? 50);
         const rawType = String(found.discount_type || "").toLowerCase().trim();
         let discountType = "fixed_amount";

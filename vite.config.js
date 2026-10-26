@@ -9,6 +9,7 @@ import sendOtpHandler from "./api/otp/send.js";
 import verifyOtpHandler from "./api/otp/verify.js";
 import sendEmailOtpHandler from "./api/email-otp/send.js";
 import verifyEmailOtpHandler from "./api/email-otp/verify.js";
+import promosHandler from "./api/promos.js";
 import fs from "fs";
 
 function vercelApiDevPlugin() {
@@ -266,6 +267,32 @@ function vercelApiDevPlugin() {
             return verifyEmailOtpHandler(req, res);
           }
         }
+
+        if (url.startsWith("/api/promos")) {
+          let body = {};
+          if (req.method === "POST" || req.method === "PUT" || req.method === "DELETE") {
+            const buffers = [];
+            for await (const chunk of req) {
+              buffers.push(chunk);
+            }
+            const raw = Buffer.concat(buffers).toString();
+            try {
+              body = JSON.parse(raw);
+            } catch (e) {
+              body = {};
+            }
+          }
+          req.body = body;
+          const query = {};
+          const queryString = req.url.includes("?") ? req.url.split("?")[1] : "";
+          if (queryString) {
+            new URLSearchParams(queryString).forEach((val, key) => {
+              query[key] = val;
+            });
+          }
+          req.query = query;
+          return promosHandler(req, res);
+        }
         next();
       });
     },
@@ -287,7 +314,10 @@ export default defineConfig(({ mode }) => {
           resolve(__dirname, "src/productsSeed.json"),
           "**/src/ordersSeed.json",
           "**/ordersSeed.json",
-          resolve(__dirname, "src/ordersSeed.json")
+          resolve(__dirname, "src/ordersSeed.json"),
+          "**/src/promosSeed.json",
+          "**/promosSeed.json",
+          resolve(__dirname, "src/promosSeed.json")
         ]
       }
     },

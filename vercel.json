@@ -8,6 +8,8 @@
     { "source": "/api/products/(.*)", "destination": "/api/products.js" },
     { "source": "/api/orders", "destination": "/api/orders.js" },
     { "source": "/api/orders/(.*)", "destination": "/api/orders.js" },
+    { "source": "/api/promos", "destination": "/api/promos.js" },
+    { "source": "/api/promos/(.*)", "destination": "/api/promos.js" },
     { "source": "/((?!api/.*).*)", "destination": "/index.html" }
   ]
 }

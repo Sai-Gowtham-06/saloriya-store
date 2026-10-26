@@ -8,6 +8,7 @@ import sendOtpHandler from "./api/otp/send.js";
 import verifyOtpHandler from "./api/otp/verify.js";
 import sendEmailOtpHandler from "./api/email-otp/send.js";
 import verifyEmailOtpHandler from "./api/email-otp/verify.js";
+import promosHandler from "./api/promos.js";
 
 // Load environment variables from .env and .env.local
 dotenv.config();
@@ -217,6 +218,11 @@ app.post("/api/otp/send", sendOtpHandler);
 app.post("/api/otp/verify", verifyOtpHandler);
 app.post("/api/email-otp/send", sendEmailOtpHandler);
 app.post("/api/email-otp/verify", verifyEmailOtpHandler);
+
+// Promos Endpoint
+app.all("/api/promos*", (req, res) => {
+  return promosHandler(req, res);
+});
 
 // Serve frontend in production build
 if (process.env.NODE_ENV === "production") {

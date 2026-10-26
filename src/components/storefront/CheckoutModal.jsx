@@ -49,6 +49,7 @@ export default function CheckoutModal() {
   const dialogRef = useRef(null);
   const activeCheckoutIdRef = useRef(null);
   const otpSessionTokenRef = useRef("");
+  const promoInputRef = useRef(null);
 
   const handleCloseCheckout = () => {
     setConfirmedOrder(null);
@@ -214,16 +215,25 @@ export default function CheckoutModal() {
   };
 
   // Promo Code Handler
-  const handleApplyPromo = async () => {
-    const rawInput = (promoInput || "").trim();
+  const handleApplyPromo = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (e && e.stopPropagation) e.stopPropagation();
+
+    // Guard against state-update lag between mobile keyboard dismissal and click: read from DOM ref first
+    const directValue = promoInputRef.current?.value;
+    const rawInput = (typeof directValue === "string" ? directValue : (promoInput || "")).trim();
     if (!rawInput) {
       setPromoError("Please enter a promo code.");
       setPromoSuccess("");
       return;
     }
 
-    const cleanCode = rawInput.toUpperCase();
+    // Strip leading/trailing spaces and make comparison case-insensitive
+    const cleanCode = rawInput.trim().toUpperCase();
     const alphanumericCode = cleanCode.replace(/[^A-Z0-9]/g, "");
+
+    // Keep React state in sync with sanitized input
+    setPromoInput(cleanCode);
 
     setPromoError("");
     setPromoSuccess("");
@@ -442,6 +452,12 @@ export default function CheckoutModal() {
   // Submit Order Handler
   const handlePlaceOrder = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
+
+    // Guard against mobile keyboard Enter submission inside promo code input triggering order placement
+    if (promoInputRef.current && document.activeElement === promoInputRef.current) {
+      handleApplyPromo(e);
+      return;
+    }
 
     try {
       const cleanEmail = email.trim().toLowerCase();
@@ -1644,22 +1660,29 @@ export default function CheckoutModal() {
                     </label>
                     <div className="promo-input-row" style={{ display: "flex", alignItems: "stretch", gap: "8px", width: "100%" }}>
                       <input
+                        ref={promoInputRef}
                         id="checkout-promo-input"
                         type="text"
                         placeholder="ENTER PROMO CODE"
                         value={promoInput}
-                        autoCapitalize="characters"
+                        autoCapitalize="none"
                         autoCorrect="off"
                         spellCheck="false"
+                        autoComplete="off"
+                        autocapitalize="none"
+                        autocorrect="off"
+                        spellcheck="false"
+                        autocomplete="off"
                         onChange={(e) => {
                           setPromoInput(e.target.value);
                           setPromoError("");
                           setPromoSuccess("");
                         }}
                         onKeyDown={(e) => {
-                          if (e.key === "Enter") {
+                          if (e.key === "Enter" || e.keyCode === 13) {
                             e.preventDefault();
-                            handleApplyPromo();
+                            e.stopPropagation();
+                            handleApplyPromo(e);
                           }
                         }}
                         style={{
@@ -1696,7 +1719,16 @@ export default function CheckoutModal() {
                           touchAction: "manipulation",
                           opacity: promoChecking ? 0.7 : 1
                         }}
-                        onClick={handleApplyPromo}
+                        onPointerDown={() => {
+                          if (promoInputRef.current) {
+                            setPromoInput(promoInputRef.current.value);
+                          }
+                        }}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleApplyPromo(e);
+                        }}
                       >
                         {promoChecking ? "CHECKING…" : "APPLY"}
                       </button>

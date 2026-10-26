@@ -919,8 +919,10 @@ function openCheckoutModal(productId, initialColour = "") {
                   type="text" 
                   id="promo-code-input" 
                   placeholder="Enter promo code" 
-                  autocomplete="off"
+                  autocapitalize="none"
+                  autocorrect="off"
                   spellcheck="false"
+                  autocomplete="off"
                 />
               </div>
               <button type="button" id="btn-apply-promo" class="checkout-promo-apply-btn">

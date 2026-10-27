@@ -164,7 +164,9 @@ app.post("/api/products", (req, res) => {
 
 // Orders Management API Endpoints (Multi-device synchronization)
 app.get("/api/orders", (req, res) => {
-  const orders = readOrdersFromFile();
+  const orders = readOrdersFromFile().sort(
+    (a, b) => new Date(b.created_at || b.updated_at || 0).getTime() - new Date(a.created_at || a.updated_at || 0).getTime()
+  );
   res.json({ success: true, orders });
 });
 

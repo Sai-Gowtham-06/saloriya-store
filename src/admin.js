@@ -617,7 +617,6 @@ const refreshOrdersBtn = document.querySelector("#refresh-orders");
 let activePaymentFilter = "all"; // 'all' | 'prepaid' | 'cod'
 
 async function loadOrders() {
-  if (!isSupabaseConfigured) return;
   if (ordersContainer) {
     ordersContainer.innerHTML = `
       <div class="loading-box">
@@ -627,56 +626,118 @@ async function loadOrders() {
     `;
   }
 
-  // 1. Fetch all orders
-  const { data: orders, error: ordersError } = await supabase
-    .from("orders")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (ordersError) {
-    console.warn("Supabase orders query note:", ordersError.message);
-    ordersList = [];
-  } else {
-    ordersList = orders || [];
-  }
-
-  // 2. Fetch line items for all orders in batch
-  if (ordersList.length > 0) {
-    const orderIds = ordersList.map(o => o.id);
-    const { data: items } = await supabase
-      .from("order_items")
-      .select("*")
-      .in("order_id", orderIds);
-
-    orderItemsMap.clear();
-    if (items) {
-      for (const item of items) {
-        if (!orderItemsMap.has(item.order_id)) {
-          orderItemsMap.set(item.order_id, []);
-        }
-        orderItemsMap.get(item.order_id).push(item);
-      }
-    }
-  } else {
-    orderItemsMap.clear();
-  }
-
-  // 3. Merge locally cached orders (guarantees newly placed orders & payment proofs appear instantly)
+  // 1. Fetch from Central API (/api/orders)
+  let apiOrders = [];
   try {
-    const localOrdersRaw = localStorage.getItem("saloriya_local_orders");
-    if (localOrdersRaw) {
-      const localOrders = JSON.parse(localOrdersRaw);
-      for (const lo of localOrders) {
-        if (!ordersList.some(o => o.id === lo.id)) {
-          ordersList.unshift(lo);
-        }
-        if (lo.items && !orderItemsMap.has(lo.id)) {
-          orderItemsMap.set(lo.id, lo.items);
-        }
+    const res = await fetch("/api/orders");
+    const json = await res.json();
+    if (json?.success && Array.isArray(json.orders)) {
+      apiOrders = json.orders;
+    }
+  } catch (e) {
+    console.warn("Central /api/orders fetch warning in admin.js:", e);
+  }
+
+  // 2. Fetch from Supabase
+  let sbOrders = [];
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error: ordersError } = await supabase
+        .from("orders")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (!ordersError && Array.isArray(data)) {
+        sbOrders = data;
       }
+    } catch (e) {
+      console.warn("Supabase orders query note in admin.js:", e);
+    }
+  }
+
+  // 3. Read localStorage caches
+  let localOrders = [];
+  try {
+    const rawAdmin = localStorage.getItem("saloriya_admin_orders");
+    const rawLocal = localStorage.getItem("saloriya_local_orders");
+    if (rawAdmin) {
+      const parsed = JSON.parse(rawAdmin);
+      if (Array.isArray(parsed)) localOrders.push(...parsed);
+    }
+    if (rawLocal) {
+      const parsed = JSON.parse(rawLocal);
+      if (Array.isArray(parsed)) localOrders.push(...parsed);
     }
   } catch (e) {
     console.warn("Could not read local orders cache:", e);
+  }
+
+  // 4. Merge and deduplicate
+  const mergedMap = new Map();
+  [...apiOrders, ...sbOrders, ...localOrders].forEach((o) => {
+    if (!o) return;
+    const key = String(o.order_id || o.id || "").trim();
+    if (key && key !== "undefined" && key !== "null") {
+      if (!mergedMap.has(key)) {
+        mergedMap.set(key, o);
+      } else {
+        const existing = mergedMap.get(key);
+        const existingTime = new Date(existing.updated_at || existing.created_at || 0).getTime();
+        const newTime = new Date(o.updated_at || o.created_at || 0).getTime();
+        if (newTime >= existingTime) {
+          mergedMap.set(key, { ...existing, ...o });
+        }
+      }
+    }
+  });
+
+  // Filter out deleted IDs
+  let deletedIds = [];
+  try {
+    const rawDeleted = JSON.parse(localStorage.getItem("saloriya_deleted_order_ids") || "[]");
+    if (Array.isArray(rawDeleted)) {
+      deletedIds = rawDeleted.filter(d => d && typeof d === "string" && d.trim());
+    }
+  } catch (e) {}
+
+  let rawUnified = Array.from(mergedMap.values());
+  if (deletedIds.length > 0) {
+    rawUnified = rawUnified.filter(o => {
+      const oid = o.order_id ? String(o.order_id).trim() : null;
+      const uid = o.id ? String(o.id).trim() : null;
+      if (oid && deletedIds.includes(oid)) return false;
+      if (uid && deletedIds.includes(uid)) return false;
+      return true;
+    });
+  }
+
+  ordersList = rawUnified.map(o => {
+    const rawStatus = String(o.status || o.order_status || "confirmed").toLowerCase();
+    const oid = o.order_id || (o.id ? `SLR-${String(o.id).slice(-6).toUpperCase()}` : `SLR-${Date.now().toString().slice(-6)}`);
+    const phone = o.customer_phone || o.phone || "";
+    const addr = o.delivery_address || (typeof o.address === "object" ? (o.address?.full || `${o.address?.street || ""}, ${o.address?.city || ""}`) : String(o.address || ""));
+    const pMethod = String(o.payment_method || "cod").toLowerCase();
+
+    return {
+      ...o,
+      id: oid,
+      order_id: oid,
+      order_status: rawStatus,
+      status: rawStatus,
+      customer_name: o.customer_name || "Valued Customer",
+      customer_phone: phone,
+      phone: phone,
+      delivery_address: addr,
+      address: typeof o.address === "object" ? o.address : { full: addr },
+      payment_method: pMethod
+    };
+  }).sort((a, b) => new Date(b.created_at || b.updated_at || 0).getTime() - new Date(a.created_at || a.updated_at || 0).getTime());
+
+  // Populate order items map
+  for (const lo of ordersList) {
+    if (lo.items && !orderItemsMap.has(lo.id)) {
+      orderItemsMap.set(lo.id, Array.isArray(lo.items) ? lo.items : []);
+    }
   }
 
   updateMetrics();
@@ -685,19 +746,27 @@ async function loadOrders() {
 
 function updateMetrics() {
   const totalCount = ordersList.length;
-  const pendingCount = ordersList.filter(o => o.order_status === "pending").length;
-  const confirmedCount = ordersList.filter(o => ["confirmed", "packed", "shipped"].includes(o.order_status)).length;
-  const deliveredCount = ordersList.filter(o => o.order_status === "delivered").length;
-  const cancelledCount = ordersList.filter(o => o.order_status === "cancelled").length;
+  const getStatus = o => String(o.order_status || o.status || "confirmed").toLowerCase();
+
+  const pendingCount = ordersList.filter(o => getStatus(o) === "pending").length;
+  const confirmedCount = ordersList.filter(o => ["confirmed", "packed", "shipped", "dispatched"].includes(getStatus(o))).length;
+  const deliveredCount = ordersList.filter(o => getStatus(o) === "delivered").length;
+  const cancelledCount = ordersList.filter(o => getStatus(o) === "cancelled").length;
 
   // Payment separation counts
-  const prepaidList = ordersList.filter(o => o.payment_method === "prepaid");
-  const codList = ordersList.filter(o => o.payment_method === "cod");
-  const pendingPrepaidCount = prepaidList.filter(o => o.order_status === "pending").length;
+  const prepaidList = ordersList.filter(o => {
+    const pm = String(o.payment_method || "").toLowerCase();
+    return pm === "prepaid" || pm === "online" || pm === "upi";
+  });
+  const codList = ordersList.filter(o => {
+    const pm = String(o.payment_method || "").toLowerCase();
+    return pm !== "prepaid" && pm !== "online" && pm !== "upi";
+  });
+  const pendingPrepaidCount = prepaidList.filter(o => getStatus(o) === "pending").length;
 
   // Total sales: sum of total_paise for non-cancelled orders
   const revenuePaise = ordersList
-    .filter(o => o.order_status !== "cancelled")
+    .filter(o => getStatus(o) !== "cancelled")
     .reduce((sum, o) => sum + (o.total_paise || 0), 0);
 
   // Update DOM elements
@@ -744,7 +813,10 @@ function updateMetrics() {
   setChipCount("#count-all", totalCount);
   setChipCount("#count-pending", pendingCount);
   setChipCount("#count-confirmed", confirmedCount);
-  setChipCount("#count-shipped", ordersList.filter(o => o.order_status === "shipped").length);
+  setChipCount("#count-shipped", ordersList.filter(o => {
+    const st = getStatus(o);
+    return st === "shipped" || st === "dispatched";
+  }).length);
   setChipCount("#count-delivered", deliveredCount);
   setChipCount("#count-cancelled", cancelledCount);
 }
@@ -754,29 +826,41 @@ function getFilteredOrders() {
 
   // 1. Separate by payment method (All vs Online Prepaid vs COD)
   if (activePaymentFilter === "prepaid") {
-    list = list.filter(o => o.payment_method === "prepaid");
+    list = list.filter(o => {
+      const pm = String(o.payment_method || "").toLowerCase();
+      return pm === "prepaid" || pm === "online" || pm === "upi";
+    });
   } else if (activePaymentFilter === "cod") {
-    list = list.filter(o => o.payment_method === "cod");
+    list = list.filter(o => {
+      const pm = String(o.payment_method || "").toLowerCase();
+      return pm !== "prepaid" && pm !== "online" && pm !== "upi";
+    });
   }
 
   // 2. Filter by status
   if (activeOrderFilter !== "all") {
-    list = list.filter(o => o.order_status === activeOrderFilter);
+    list = list.filter(o => {
+      const st = String(o.order_status || o.status || "confirmed").toLowerCase();
+      if (activeOrderFilter === "shipped") {
+        return st === "shipped" || st === "dispatched";
+      }
+      return st === activeOrderFilter.toLowerCase();
+    });
   }
 
   // 3. Search filter
   const q = orderSearchQuery.trim().toLowerCase();
   if (q) {
     list = list.filter(o => {
-      const idMatch = (o.id || "").toLowerCase().includes(q);
-      const nameMatch = (o.customer_name || "").toLowerCase().includes(q);
-      const phoneMatch = (o.phone || "").toLowerCase().includes(q);
-      const addressStr = typeof o.address === "object" ? JSON.stringify(o.address).toLowerCase() : String(o.address || "").toLowerCase();
+      const idMatch = String(o.id || o.order_id || "").toLowerCase().includes(q);
+      const nameMatch = String(o.customer_name || "").toLowerCase().includes(q);
+      const phoneMatch = String(o.phone || o.customer_phone || "").toLowerCase().includes(q);
+      const addressStr = typeof o.address === "object" ? JSON.stringify(o.address).toLowerCase() : String(o.delivery_address || o.address || "").toLowerCase();
       const addrMatch = addressStr.includes(q);
 
       // Check item products
-      const items = orderItemsMap.get(o.id) || [];
-      const itemMatch = items.some(it => (it.product_name || "").toLowerCase().includes(q) || (it.colour || "").toLowerCase().includes(q));
+      const items = orderItemsMap.get(o.id) || (Array.isArray(o.items) ? o.items : []);
+      const itemMatch = items.some(it => String(it.product_name || "").toLowerCase().includes(q) || String(it.colour || it.variant_colour || "").toLowerCase().includes(q));
 
       return idMatch || nameMatch || phoneMatch || addrMatch || itemMatch;
     });

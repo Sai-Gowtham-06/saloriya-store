@@ -38,8 +38,17 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
     }).format((paise || 0) / 100);
   };
 
-  const handleStatusChange = async (targetOrderId, newStatus) => {
+  const handleStatusChange = async (targetOrderId, newStatus, targetOrder = null) => {
     if (!targetOrderId) return;
+
+    // Toast feedback
+    if (newStatus === "cancelled") {
+      setOrderToast(`Order #${targetOrderId} marked Cancelled. Use the WhatsApp button to send cancellation note.`);
+      setTimeout(() => setOrderToast(""), 5000);
+    } else if (newStatus === "confirmed") {
+      setOrderToast(`Order #${targetOrderId} marked Confirmed.`);
+      setTimeout(() => setOrderToast(""), 3500);
+    }
 
     // 1. Update Central Orders API
     try {
@@ -73,10 +82,11 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
         );
         if (idx !== -1) {
           local[idx].status = newStatus;
+          local[idx].updated_at = new Date().toISOString();
           localStorage.setItem("saloriya_admin_orders", JSON.stringify(local));
         }
       }
-    } catch (e) {}
+    } catch (e) { }
 
     onOrderUpdated();
   };
@@ -103,7 +113,7 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
       if (targetOrderId && !deleted.includes(targetOrderId)) deleted.push(targetOrderId);
       if (targetDbId && !deleted.includes(targetDbId)) deleted.push(targetDbId);
       localStorage.setItem("saloriya_deleted_order_ids", JSON.stringify(deleted));
-    } catch (e) {}
+    } catch (e) { }
 
     // 2. Remove from Central Orders API
     try {
@@ -132,7 +142,7 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
         });
         localStorage.setItem("saloriya_admin_orders", JSON.stringify(filtered));
       }
-    } catch (e) {}
+    } catch (e) { }
 
     // 4. Delete from Supabase
     try {
@@ -153,34 +163,61 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
   };
 
   const filteredOrders = orders.filter((o) => {
-    // Payment filter
-    if (paymentFilter === "prepaid" && o.payment_method !== "prepaid") return false;
-    if (paymentFilter === "cod" && o.payment_method === "prepaid") return false;
+    if (!o) return false;
 
-    // Status filter
-    if (statusFilter !== "all" && (o.status || "confirmed") !== statusFilter) return false;
+    // Payment filter (supports "prepaid", "online", "upi" vs "cod")
+    const payMethod = String(o.payment_method || "cod").toLowerCase();
+    const isPrepaid = payMethod === "prepaid" || payMethod === "online" || payMethod === "upi";
+    if (paymentFilter === "prepaid" && !isPrepaid) return false;
+    if (paymentFilter === "cod" && isPrepaid) return false;
+
+    // Status filter (case-insensitive, supports status & order_status)
+    const currStatus = String(o.status || o.order_status || "confirmed").toLowerCase();
+    if (statusFilter !== "all") {
+      if (statusFilter === "shipped") {
+        if (currStatus !== "shipped" && currStatus !== "dispatched") return false;
+      } else if (currStatus !== statusFilter.toLowerCase()) {
+        return false;
+      }
+    }
 
     // Search query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
-      const matchName = (o.customer_name || "").toLowerCase().includes(q);
-      const matchPhone = (o.customer_phone || "").includes(q);
-      const matchId = (o.order_id || "").toLowerCase().includes(q);
-      const matchProduct = (o.product_name || "").toLowerCase().includes(q);
+      const matchName = String(o.customer_name || "").toLowerCase().includes(q);
+      const matchPhone = String(o.customer_phone || o.phone || "").includes(q);
+      const matchId = String(o.order_id || o.id || "").toLowerCase().includes(q);
+      const matchProduct = String(o.product_name || "").toLowerCase().includes(q);
       if (!matchName && !matchPhone && !matchId && !matchProduct) return false;
     }
 
     return true;
-  });
+  }).sort((a, b) => new Date(b.created_at || b.updated_at || 0).getTime() - new Date(a.created_at || a.updated_at || 0).getTime());
 
-  const countPrepaid = orders.filter((o) => o.payment_method === "prepaid").length;
-  const countCod = orders.filter((o) => o.payment_method !== "prepaid").length;
+  const countPrepaid = orders.filter((o) => {
+    if (!o) return false;
+    const pm = String(o.payment_method || "cod").toLowerCase();
+    return pm === "prepaid" || pm === "online" || pm === "upi";
+  }).length;
+  const countCod = orders.filter((o) => {
+    if (!o) return false;
+    const pm = String(o.payment_method || "cod").toLowerCase();
+    return pm !== "prepaid" && pm !== "online" && pm !== "upi";
+  }).length;
 
-  const countPending = orders.filter((o) => o.status === "pending").length;
-  const countConfirmed = orders.filter((o) => o.status === "confirmed" || !o.status).length;
-  const countShipped = orders.filter((o) => o.status === "shipped" || o.status === "dispatched").length;
-  const countDelivered = orders.filter((o) => o.status === "delivered").length;
-  const countCancelled = orders.filter((o) => o.status === "cancelled").length;
+  const countPending = orders.filter((o) => o && String(o.status || o.order_status || "").toLowerCase() === "pending").length;
+  const countConfirmed = orders.filter((o) => {
+    if (!o) return false;
+    const st = String(o.status || o.order_status || "confirmed").toLowerCase();
+    return st === "confirmed" || !st;
+  }).length;
+  const countShipped = orders.filter((o) => {
+    if (!o) return false;
+    const st = String(o.status || o.order_status || "").toLowerCase();
+    return st === "shipped" || st === "dispatched";
+  }).length;
+  const countDelivered = orders.filter((o) => o && String(o.status || o.order_status || "").toLowerCase() === "delivered").length;
+  const countCancelled = orders.filter((o) => o && String(o.status || o.order_status || "").toLowerCase() === "cancelled").length;
 
   return (
     <div id="view-orders" className="admin-tab-view active">
@@ -327,8 +364,9 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
           </div>
         ) : (
           filteredOrders.map((order, idx) => {
-            const isPrepaid = order.payment_method === "prepaid";
-            const status = order.status || "confirmed";
+            const payMethod = String(order.payment_method || "cod").toLowerCase();
+            const isPrepaid = payMethod === "prepaid" || payMethod === "online" || payMethod === "upi";
+            const status = String(order.status || order.order_status || "confirmed").toLowerCase();
             const orderKey = order.order_id || order.id || `order_${idx}`;
             const formattedDate = (() => {
               if (!order.created_at) return "Recently placed";
@@ -337,6 +375,10 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
                 ? "Recently placed"
                 : d.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" });
             })();
+
+            const customerPhone = String(order.customer_phone || order.phone || "").replace(/\D/g, "");
+            const displayPhone = customerPhone ? (customerPhone.length > 10 ? customerPhone.slice(-10) : customerPhone) : "—";
+            const customerAddress = order.delivery_address || (typeof order.address === "object" ? (order.address?.full || `${order.address?.street || ""}, ${order.address?.city || ""}`) : String(order.address || "Address on record"));
 
             return (
               <div key={orderKey} className="order-card">
@@ -364,34 +406,94 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
                   {/* Customer Column */}
                   <div className="order-customer-col">
                     <span className="order-section-subtitle">Customer Details</span>
-                    <strong style={{ fontSize: "15px", color: "var(--ink)" }}>{order.customer_name}</strong>
+                    <strong style={{ fontSize: "15px", color: "var(--ink)" }}>{order.customer_name || "Valued Customer"}</strong>
                     <div>
-                      <a
-                        href={`https://wa.me/91${order.customer_phone}?text=Hello%20${encodeURIComponent(order.customer_name)},%20this%20is%20SALORIYA%20Store%20regarding%20your%20order%20%23${order.order_id}.`}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{
-                          color: "#15803d",
-                          fontWeight: 600,
-                          fontSize: "13px",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "4px",
-                          textDecoration: "none"
-                        }}
-                      >
-                        📱 +91 {order.customer_phone} 
-                      </a>
+                      {customerPhone ? (
+                        <a
+                          href={`https://wa.me/91${displayPhone}?text=Hello%20${encodeURIComponent(order.customer_name || "Customer")},%20this%20is%20SALORIYA%20Store%20regarding%20your%20order%20%23${order.order_id || order.id}.`}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{
+                            color: "#15803d",
+                            fontWeight: 600,
+                            fontSize: "13px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            textDecoration: "none"
+                          }}
+                        >
+                          📱 +91 {displayPhone}
+                        </a>
+                      ) : (
+                        <span style={{ color: "var(--muted)", fontSize: "12px" }}>📱 Phone not provided</span>
+                      )}
                     </div>
                     <div style={{ fontSize: "12.5px", color: "var(--muted)", lineHeight: 1.4, marginTop: "4px" }}>
-                      📍 {order.delivery_address}
+                      📍 {customerAddress}
                     </div>
                   </div>
 
-                  {/* Order Items Column with Preview Image */}
+                  {/* Order Items Column with Preview Image or Multi-Item List */}
                   <div className="order-items-col">
                     <span className="order-section-subtitle">Ordered Pieces</span>
                     {(() => {
+                      const parsedItems = Array.isArray(order.items)
+                        ? order.items
+                        : (typeof order.items === "string" ? (() => { try { const p = JSON.parse(order.items); return Array.isArray(p) ? p : null; } catch(e) { return null; } })() : null);
+                      const hasMultiItems = Array.isArray(parsedItems) && parsedItems.length > 0;
+
+                      if (hasMultiItems) {
+                        return (
+                          <div style={{ background: "#fcf8f5", border: "1px solid var(--line-subtle)", borderRadius: "8px", padding: "10px 14px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--line-subtle)", paddingBottom: "6px" }}>
+                              <span style={{ fontSize: "11.5px", color: "var(--wine)", fontWeight: 700 }}>
+                                👜 {parsedItems.length} {parsedItems.length === 1 ? "Piece" : "Pieces"} in Cart Order
+                              </span>
+                              <strong style={{ fontSize: "14px", color: "var(--wine)" }}>
+                                Total: {formatMoney(order.total_paise)}
+                              </strong>
+                            </div>
+
+                            <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "180px", overflowY: "auto", paddingRight: "2px" }}>
+                              {parsedItems.map((it, i) => (
+                                <div key={i} style={{ display: "flex", gap: "10px", alignItems: "center", background: "#ffffff", border: "1px solid var(--line-subtle)", borderRadius: "6px", padding: "6px 10px" }}>
+                                  {it.product_image ? (
+                                    <img
+                                      src={it.product_image}
+                                      alt={it.product_name}
+                                      style={{ width: "42px", height: "42px", borderRadius: "6px", objectFit: "cover", border: "1px solid var(--line)", flexShrink: 0 }}
+                                    />
+                                  ) : (
+                                    <div style={{ width: "42px", height: "42px", borderRadius: "6px", display: "grid", placeItems: "center", background: "#faf4f0", color: "var(--wine)", fontFamily: "serif", fontSize: "16px", flexShrink: 0 }}>
+                                      S
+                                    </div>
+                                  )}
+                                  <div style={{ flex: 1, minWidth: 0 }}>
+                                    <strong style={{ fontSize: "12.5px", color: "var(--ink)", display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                      {it.product_name}
+                                    </strong>
+                                    <div style={{ fontSize: "11px", color: "var(--muted)" }}>
+                                      Colour: <strong>{it.variant_colour || "Standard"}</strong> · Qty: <strong>{it.quantity || 1}</strong>
+                                    </div>
+                                  </div>
+                                  <strong style={{ fontSize: "12px", color: "var(--wine)", flexShrink: 0 }}>
+                                    {formatMoney(it.subtotal_paise || ((it.unit_price_paise || 0) * (it.quantity || 1)))}
+                                  </strong>
+                                </div>
+                              ))}
+                            </div>
+
+                            {order.utr_number && (
+                              <div style={{ fontSize: "11px", color: "#6b21a8", marginTop: "4px", fontWeight: 600 }}>
+                                UPI Ref / UTR: {order.utr_number}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+
+                      // Fallback: Single product display
                       const matchedProduct = products?.find(
                         (p) => p.id === order.product_id || (p.name && order.product_name && p.name.trim().toLowerCase() === order.product_name.trim().toLowerCase())
                       );
@@ -459,69 +561,178 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
                   </div>
                 </div>
 
-                {/* Footer Actions Strip */}
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    gap: "10px",
-                    padding: "12px 20px",
-                    background: "#fbf7f4",
-                    borderTop: "1px solid var(--line)"
-                  }}
-                >
-                  <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-                    {order.payment_screenshot && (
-                      <button
-                        type="button"
-                        className="button"
-                        style={{
-                          padding: "6px 12px",
-                          fontSize: "11px",
-                          background: "#fdf4ff",
-                          border: "1px solid #f0abfc",
-                          color: "#a21caf"
-                        }}
-                        onClick={() => setSelectedScreenshot(order.payment_screenshot)}
-                      >
-                        📸 View UPI Screenshot Proof
-                      </button>
-                    )}
-                  </div>
+                {/* Footer Actions Strip with WhatsApp Status Notification & Actions */}
+                {(() => {
+                  const phoneDigits = (order.customer_phone || order.phone || "").replace(/\D/g, "").slice(-10);
+                  const custName = order.customer_name || "Valued Customer";
+                  const oId = order.order_id || order.id || "SLR";
+                  const pName = order.product_name || "Jewellery Order";
+                  const totalFormatted = formatMoney(order.total_paise);
+                  const custAddress = order.delivery_address || (typeof order.address === "object" ? (order.address?.full || `${order.address?.street || ""}, ${order.address?.city || ""}`) : String(order.address || "Address on record"));
 
-                  <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
-                    <span style={{ fontSize: "11px", color: "var(--muted)", fontWeight: 600 }}>Status:</span>
-                    <select
-                      value={status}
-                      onChange={(e) => handleStatusChange(order.order_id || order.id, e.target.value)}
+                  const cancellationNote = `Namaste ${custName}, your SALORIYA order #${oId} for "${pName}" has been cancelled. If you have any questions or would like to choose another piece from our catalogue, feel free to reply directly to this message. Team SALORIYA.`;
+                  const confirmationNote = `Namaste ${custName}, your SALORIYA order #${oId} for "${pName}" has been confirmed! Total: ${totalFormatted}. We are carefully packing your jewellery for dispatch. Thank you for shopping with SALORIYA!`;
+                  const shippedNote = `Namaste ${custName}, your SALORIYA order #${oId} for "${pName}" has been dispatched and shipped! Delivery address: ${custAddress}. Team SALORIYA.`;
+                  const generalNote = `Namaste ${custName}, this is SALORIYA Store regarding your order #${oId}.`;
+
+                  const waCancelUrl = `https://wa.me/91${phoneDigits}?text=${encodeURIComponent(cancellationNote)}`;
+                  const waConfirmUrl = `https://wa.me/91${phoneDigits}?text=${encodeURIComponent(confirmationNote)}`;
+                  const waShippedUrl = `https://wa.me/91${phoneDigits}?text=${encodeURIComponent(shippedNote)}`;
+                  const waGeneralUrl = `https://wa.me/91${phoneDigits}?text=${encodeURIComponent(generalNote)}`;
+
+                  return (
+                    <div
                       style={{
-                        padding: "5px 10px",
-                        fontSize: "11.5px",
-                        borderRadius: "6px",
-                        border: "1px solid var(--line)",
-                        background: "#fff",
-                        fontWeight: 600
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        flexWrap: "wrap",
+                        gap: "10px",
+                        padding: "12px 20px",
+                        background: "#fbf7f4",
+                        borderTop: "1px solid var(--line)"
                       }}
                     >
-                      <option value="pending">Pending</option>
-                      <option value="confirmed">Confirmed</option>
-                      <option value="shipped">Shipped</option>
-                      <option value="delivered">Delivered</option>
-                      <option value="cancelled">Cancelled</option>
-                    </select>
+                      <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                        {order.payment_screenshot && (
+                          <button
+                            type="button"
+                            className="button"
+                            style={{
+                              padding: "6px 12px",
+                              fontSize: "11px",
+                              background: "#fdf4ff",
+                              border: "1px solid #f0abfc",
+                              color: "#a21caf"
+                            }}
+                            onClick={() => setSelectedScreenshot(order.payment_screenshot)}
+                          >
+                            📸 View UPI Screenshot Proof
+                          </button>
+                        )}
 
-                    <button
-                      type="button"
-                      className="button button-small"
-                      style={{ background: "#fee2e2", color: "#991b1b", border: "1px solid #fecaca", marginLeft: "8px" }}
-                      onClick={() => setDeleteTargetOrder(order)}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
+                        {/* Status-specific WhatsApp Note Actions */}
+                        {status === "cancelled" && (
+                          <a
+                            href={waCancelUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="button button-small"
+                            style={{
+                              background: "#fef2f2",
+                              color: "#b91c1c",
+                              border: "1.5px solid #f87171",
+                              textDecoration: "none",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "5px",
+                              fontWeight: 700,
+                              boxShadow: "0 1px 4px rgba(185,28,28,0.12)"
+                            }}
+                            title="Send cancellation note to customer's WhatsApp"
+                          >
+                            <span>💬 WhatsApp Cancellation Note</span>
+                          </a>
+                        )}
+
+                        {status === "confirmed" && (
+                          <a
+                            href={waConfirmUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="button button-small"
+                            style={{
+                              background: "#f0fdf4",
+                              color: "#15803d",
+                              border: "1.5px solid #86efac",
+                              textDecoration: "none",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "5px",
+                              fontWeight: 700
+                            }}
+                            title="Send confirmation note to customer's WhatsApp"
+                          >
+                            <span>💬 WhatsApp Confirmation Note</span>
+                          </a>
+                        )}
+
+                        {status === "shipped" && (
+                          <a
+                            href={waShippedUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="button button-small"
+                            style={{
+                              background: "#eff6ff",
+                              color: "#1d4ed8",
+                              border: "1.5px solid #93c5fd",
+                              textDecoration: "none",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: "5px",
+                              fontWeight: 700
+                            }}
+                            title="Send shipping dispatch note to customer's WhatsApp"
+                          >
+                            <span>🚚 WhatsApp Shipping Note</span>
+                          </a>
+                        )}
+
+                        <a
+                          href={waGeneralUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="button button-small"
+                          style={{
+                            background: "#ffffff",
+                            color: "#166534",
+                            border: "1px solid #bbf7d0",
+                            textDecoration: "none",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            fontSize: "11px"
+                          }}
+                          title="Message customer on WhatsApp"
+                        >
+                          <span>💬 Message</span>
+                        </a>
+                      </div>
+
+                      <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+                        <span style={{ fontSize: "11px", color: "var(--muted)", fontWeight: 600 }}>Status:</span>
+                        <select
+                          value={status}
+                          onChange={(e) => handleStatusChange(order.order_id || order.id, e.target.value, order)}
+                          style={{
+                            padding: "5px 10px",
+                            fontSize: "11.5px",
+                            borderRadius: "6px",
+                            border: "1px solid var(--line)",
+                            background: "#fff",
+                            fontWeight: 600
+                          }}
+                        >
+                          <option value="pending">Pending</option>
+                          <option value="confirmed">Confirmed</option>
+                          <option value="shipped">Shipped</option>
+                          <option value="delivered">Delivered</option>
+                          <option value="cancelled">Cancelled</option>
+                        </select>
+
+                        <button
+                          type="button"
+                          className="button button-small"
+                          style={{ background: "#fee2e2", color: "#991b1b", border: "1px solid #fecaca", marginLeft: "8px" }}
+                          onClick={() => setDeleteTargetOrder(order)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })

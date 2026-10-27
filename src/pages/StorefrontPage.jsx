@@ -9,12 +9,15 @@ import StorefrontToolbar from "../components/storefront/StorefrontToolbar";
 import ProductGrid from "../components/storefront/ProductGrid";
 import ProductPreviewModal from "../components/storefront/ProductPreviewModal";
 import CheckoutModal from "../components/storefront/CheckoutModal";
+import CartDrawer from "../components/storefront/CartDrawer";
 import StorySection from "../components/storefront/StorySection";
 import ContactSection from "../components/storefront/ContactSection";
 import SiteFooter from "../components/storefront/SiteFooter";
 import FloatingWhatsApp from "../components/storefront/FloatingWhatsApp";
+import { useStore } from "../context/StoreContext";
 
 export default function StorefrontPage() {
+  const { cartCount, openCart, cartToast, formatMoney, cartSubtotalPaise } = useStore();
   return (
     <>
       <AnnouncementBar />
@@ -46,7 +49,34 @@ export default function StorefrontPage() {
       <SiteFooter />
       <ProductPreviewModal />
       <CheckoutModal />
+      <CartDrawer />
       <FloatingWhatsApp />
+
+      {/* Floating Shopping Bag Pill */}
+      {cartCount > 0 && (
+        <button
+          type="button"
+          className="floating-cart-pill"
+          onClick={openCart}
+          aria-label={`View shopping bag with ${cartCount} items`}
+        >
+          <span className="floating-cart-icon">👜</span>
+          <span className="floating-cart-text">
+            <strong>{cartCount} {cartCount === 1 ? "Piece" : "Pieces"}</strong>
+            <small>• {formatMoney(cartSubtotalPaise)}</small>
+          </span>
+          <span className="floating-cart-arrow">View Bag →</span>
+        </button>
+      )}
+
+      {/* Cart Toast Notification */}
+      {cartToast && (
+        <div className="cart-toast-banner" role="status" onClick={openCart}>
+          <span className="cart-toast-icon">✓</span>
+          <span className="cart-toast-msg">{cartToast}</span>
+          <span className="cart-toast-cta">View Bag →</span>
+        </div>
+      )}
     </>
   );
 }

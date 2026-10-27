@@ -75,3 +75,12 @@ CREATE POLICY "Allow anon and auth full access to orders"
   TO anon, authenticated, service_role
   USING (true)
   WITH CHECK (true);
+
+-- Populate existing orders into Supabase so all devices immediately synchronize
+INSERT INTO public.orders (order_id, customer_name, customer_phone, delivery_address, product_id, product_name, variant_colour, quantity, total_paise, subtotal_paise, payment_method, status, order_status, created_at)
+VALUES 
+  ('SLR-952479', 'Naresh', '9363315416', 'Alpha male, Thiruvallur, Thiruvallur, Tamil Nadu - 602001', '2fb78137-672d-40f1-b058-9f3803f9642e', 'Antique Gold Stone Pearl Jhumka Earrings', 'BLACK', 1, 11900, 6900, 'cod', 'confirmed', 'confirmed', '2026-10-27T02:25:00.000Z'),
+  ('SLR-952381', 'Naresh', '9363315416', 'Alpha male, Thiruvallur, Thiruvallur, Tamil Nadu - 602001', '2fb78137-672d-40f1-b058-9f3803f9642e', 'Antique Gold Stone Pearl Jhumka Earrings', 'BLACK', 1, 11900, 6900, 'cod', 'confirmed', 'confirmed', '2026-10-27T02:25:00.000Z'),
+  ('SLR-757342', 'test', '8122291690', 'huiknk, Chennai, Tamil Nadu - 600001', 'f6ebe650-629a-4a3f-bf6c-ff07e1c0a53a', 'Royal Lotus Antique Gold Chandbali Earrings', 'BLUE', 1, 15500, 10500, 'cod', 'confirmed', 'confirmed', '2026-10-26T17:12:00.000Z')
+ON CONFLICT (order_id) DO NOTHING;
+

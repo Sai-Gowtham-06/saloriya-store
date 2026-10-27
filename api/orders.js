@@ -55,7 +55,7 @@ async function querySupabaseOrders() {
   if (!SUPABASE_URL || !SUPABASE_KEY) return null;
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/orders?select=*&order=created_at.desc`, {
-      signal: AbortSignal.timeout(3000),
+      signal: AbortSignal.timeout(8000),
       headers: {
         apikey: SUPABASE_KEY,
         Authorization: `Bearer ${SUPABASE_KEY}`
@@ -90,7 +90,6 @@ export default async function handler(req, res) {
 
   const url = req.url || "";
   const pathParts = url.split("?")[0].split("/").filter(Boolean);
-  const isStatusUpdate = url.includes("/status");
 
   let idFromPath = null;
   if (pathParts.length >= 3 && pathParts[1] === "orders") {
@@ -110,10 +109,19 @@ export default async function handler(req, res) {
         const key = String(o.order_id || o.id);
         if (key && !mergedMap.has(key)) {
           mergedMap.set(key, o);
+        } else if (key) {
+          const existing = mergedMap.get(key);
+          const existingTime = new Date(existing.updated_at || existing.created_at || 0).getTime();
+          const newTime = new Date(o.updated_at || o.created_at || 0).getTime();
+          if (newTime > existingTime) {
+            mergedMap.set(key, { ...existing, ...o });
+          }
         }
       });
 
-      const orders = Array.from(mergedMap.values());
+      const orders = Array.from(mergedMap.values()).sort(
+        (a, b) => new Date(b.created_at || b.updated_at || 0).getTime() - new Date(a.created_at || a.updated_at || 0).getTime()
+      );
       writeOrders(orders);
       return res.status(200).json({ success: true, orders });
     }
@@ -159,11 +167,13 @@ export default async function handler(req, res) {
             delivery_pincode: body.delivery_pincode,
             notes: body.notes || "",
             status: body.status || "confirmed",
+            order_status: body.status || "confirmed",
             payment_screenshot_url: body.payment_screenshot_url || null,
+            items: body.items || null,
             created_at: body.created_at || new Date().toISOString()
           };
 
-          await fetch(`${SUPABASE_URL}/rest/v1/orders`, {
+          const sbRes = await fetch(`${SUPABASE_URL}/rest/v1/orders`, {
             method: "POST",
             headers: {
               apikey: SUPABASE_KEY,
@@ -173,6 +183,30 @@ export default async function handler(req, res) {
             },
             body: JSON.stringify(sbPayload)
           });
+
+          if (!sbRes.ok) {
+            // Fallback for legacy columns schema
+            const fallbackPayload = {
+              customer_name: body.customer_name,
+              phone: body.customer_phone || body.phone,
+              address: typeof body.delivery_address === "string" ? { full: body.delivery_address } : (body.address || { full: "" }),
+              payment_method: body.payment_method || "cod",
+              payment_status: body.payment_method === "prepaid" ? "paid" : "pending",
+              order_status: body.status || "confirmed",
+              total_paise: body.total_paise || 0,
+              discount_paise: body.discount_paise || 0,
+              promo_code: body.promo_code || null
+            };
+            await fetch(`${SUPABASE_URL}/rest/v1/orders`, {
+              method: "POST",
+              headers: {
+                apikey: SUPABASE_KEY,
+                Authorization: `Bearer ${SUPABASE_KEY}`,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify(fallbackPayload)
+            });
+          }
         } catch (sbErr) {
           console.warn("Supabase order insert warning:", sbErr);
         }
@@ -199,15 +233,26 @@ export default async function handler(req, res) {
 
       if (SUPABASE_URL && SUPABASE_KEY) {
         try {
-          await fetch(`${SUPABASE_URL}/rest/v1/orders?order_id=eq.${encodeURIComponent(targetId)}`, {
+          const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/orders?or=(order_id.eq.${encodeURIComponent(targetId)},id.eq.${encodeURIComponent(targetId)})`, {
             method: "PATCH",
             headers: {
               apikey: SUPABASE_KEY,
               Authorization: `Bearer ${SUPABASE_KEY}`,
               "Content-Type": "application/json"
             },
-            body: JSON.stringify({ status })
+            body: JSON.stringify({ status, order_status: status })
           });
+          if (!patchRes.ok) {
+            await fetch(`${SUPABASE_URL}/rest/v1/orders?or=(order_id.eq.${encodeURIComponent(targetId)},id.eq.${encodeURIComponent(targetId)})`, {
+              method: "PATCH",
+              headers: {
+                apikey: SUPABASE_KEY,
+                Authorization: `Bearer ${SUPABASE_KEY}`,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({ order_status: status })
+            });
+          }
         } catch (e) {}
       }
 

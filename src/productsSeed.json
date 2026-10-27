@@ -1,23 +1,5 @@
 [
   {
-    "name": "Emerald Royalty Choker Necklace",
-    "slug": "emerald-royalty-choker-necklace",
-    "description": "",
-    "category": "Combos",
-    "price_paise": 89900,
-    "stock": 8,
-    "colours": [
-      "EMERALD GREEN",
-      "RUBY RED"
-    ],
-    "image_urls": [],
-    "images": [],
-    "is_published": true,
-    "updated_at": "2026-10-26T17:03:24.813Z",
-    "id": "89810964-6714-4df2-a650-8b74e69d6eef",
-    "created_at": "2026-10-26T17:03:26.164Z"
-  },
-  {
     "id": "2fb78137-672d-40f1-b058-9f3803f9642e",
     "name": "Royal Square Pearl Jhumka Earrings",
     "slug": "royal-pearl-antique-gold-jhumka-earrings",
@@ -40,10 +22,10 @@
       "SKY BLUE",
       "RED"
     ],
-    "stock": 7,
+    "stock": 6,
     "is_published": false,
     "created_at": "2026-10-23T10:04:42.320745+00:00",
-    "updated_at": "2026-10-24T11:25:59.617Z"
+    "updated_at": "2026-10-27T18:24:55.480Z"
   },
   {
     "id": "97fd5dab-6b02-40b5-b339-9370d8f301a5",
@@ -110,10 +92,10 @@
       "GREEN",
       "MAROON"
     ],
-    "stock": 6,
+    "stock": 3,
     "is_published": true,
     "created_at": "2026-10-23T11:47:00.55747+00:00",
-    "updated_at": "2026-10-24T10:23:35.404Z"
+    "updated_at": "2026-10-27T19:52:39.997Z"
   },
   {
     "id": "f6ebe650-629a-4a3f-bf6c-ff07e1c0a53a",
@@ -130,10 +112,10 @@
       "BLUE",
       "RED"
     ],
-    "stock": 2,
+    "stock": 3,
     "is_published": true,
     "created_at": "2026-10-23T12:04:17.271918+00:00",
-    "updated_at": "2026-10-25T07:54:47.097Z"
+    "updated_at": "2026-10-27T19:52:39.418Z"
   },
   {
     "id": "0fa9cd8e-dd35-4951-93f8-bbd270e2cc2e",
@@ -156,10 +138,10 @@
       "GREEN",
       "SKY BLUE"
     ],
-    "stock": 5,
+    "stock": 4,
     "is_published": true,
     "created_at": "2026-10-23T11:32:25.96304+00:00",
-    "updated_at": "2026-10-24T10:23:41.854Z"
+    "updated_at": "2026-10-27T18:19:58.980Z"
   },
   {
     "id": "a98b731a-154b-4dec-8b81-dd95b4141c11",

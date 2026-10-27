@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
+import { useStore } from "../../context/StoreContext";
 
 export default function SiteHeader() {
+  const { cartCount, openCart } = useStore();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
@@ -51,6 +53,19 @@ export default function SiteHeader() {
         {/* Tagline wording beside the hamburger menu icon */}
         <span className="header-tagline-wording">Where Elegance Meets Women</span>
 
+        {/* Cart Bag Icon Button */}
+        <button
+          type="button"
+          className="header-cart-btn"
+          onClick={openCart}
+          aria-label={`Shopping Bag with ${cartCount} items`}
+          title="View Shopping Bag"
+        >
+          <span className="header-cart-icon">👜</span>
+          <span className="header-cart-label">Bag</span>
+          {cartCount > 0 && <span className="header-cart-badge">{cartCount}</span>}
+        </button>
+
         {/* Three-line Hamburger Menu Button in the Right Corner */}
         <button
           type="button"
@@ -79,6 +94,28 @@ export default function SiteHeader() {
               </button>
             </div>
             <div className="dropdown-links-list">
+              <button
+                type="button"
+                className="dropdown-link"
+                style={{
+                  background: "none",
+                  border: "none",
+                  width: "100%",
+                  textAlign: "left",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "10px"
+                }}
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  openCart();
+                }}
+              >
+                <span className="link-icon">👜</span>
+                <span className="link-text">Shopping Bag ({cartCount})</span>
+              </button>
               <a href="#shop" className="dropdown-link" onClick={handleLinkClick}>
                 <span className="link-icon"></span>
                 <span className="link-text">Shop Collection</span>

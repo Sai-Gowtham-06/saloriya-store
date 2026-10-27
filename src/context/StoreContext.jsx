@@ -35,9 +35,20 @@ export function StoreProvider({ children }) {
   const [inStockOnly, setInStockOnly] = useState(false);
   const [activeSort, setActiveSort] = useState("newest");
 
-  // Modals state
+  // Modals & Cart state
   const [previewProductId, setPreviewProductId] = useState(null);
   const [checkoutItem, setCheckoutItem] = useState(null);
+  const [checkoutItems, setCheckoutItems] = useState([]);
+  const [isCartOpen, setIsCartOpen] = useState(false);
+  const [cartToast, setCartToast] = useState("");
+  const [cart, setCart] = useState(() => {
+    try {
+      const saved = localStorage.getItem("saloriya_cart");
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
 
   // Load products from API / Supabase / localStorage / productsSeed
   const getDeletedIds = () => {
@@ -440,13 +451,137 @@ export function StoreProvider({ children }) {
   const openPreview = (productId) => setPreviewProductId(productId);
   const closePreview = () => setPreviewProductId(null);
 
-  const openCheckout = (product, initialColour = null) => {
-    setCheckoutItem({
-      product,
-      initialColour: initialColour || (product.colours && product.colours[0]) || "Standard"
+  // Cart operations
+  const addToCart = (product, selectedColour = null, quantity = 1) => {
+    if (!product) return;
+    const colour = selectedColour || (product.colours && product.colours[0]) || "Standard";
+    const cleanQty = Math.max(1, parseInt(quantity, 10) || 1);
+    const cartItemId = `${product.id || product.slug}_${colour}`;
+    const maxStock = Math.max(1, product.stock ?? 5);
+
+    setCart((prevCart) => {
+      const idx = prevCart.findIndex((item) => item.cartItemId === cartItemId);
+      let updated;
+      if (idx !== -1) {
+        updated = [...prevCart];
+        const newQty = updated[idx].quantity + cleanQty;
+        updated[idx] = {
+          ...updated[idx],
+          quantity: Math.min(newQty, maxStock)
+        };
+      } else {
+        const itemImage = getColourImage(product, colour, 0) || product.image_urls?.[0] || product.images?.[0] || "";
+        const newItem = {
+          cartItemId,
+          product,
+          productId: product.id || product.slug,
+          name: product.name,
+          colour,
+          image: itemImage,
+          unit_price_paise: product.price_paise || 0,
+          quantity: cleanQty,
+          stock: maxStock
+        };
+        updated = [...prevCart, newItem];
+      }
+      try {
+        localStorage.setItem("saloriya_cart", JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+
+    setCartToast(`✓ Added "${product.name}" (${colour}) to your bag!`);
+    setTimeout(() => setCartToast(""), 3500);
+  };
+
+  const updateCartQuantity = (cartItemId, newQty) => {
+    setCart((prevCart) => {
+      let updated;
+      if (newQty <= 0) {
+        updated = prevCart.filter((item) => item.cartItemId !== cartItemId);
+      } else {
+        updated = prevCart.map((item) => {
+          if (item.cartItemId === cartItemId) {
+            const maxStock = Math.max(1, item.product?.stock ?? item.stock ?? 99);
+            return { ...item, quantity: Math.min(newQty, maxStock) };
+          }
+          return item;
+        });
+      }
+      try {
+        localStorage.setItem("saloriya_cart", JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
     });
   };
-  const closeCheckout = () => setCheckoutItem(null);
+
+  const removeFromCart = (cartItemId) => {
+    setCart((prevCart) => {
+      const updated = prevCart.filter((item) => item.cartItemId !== cartItemId);
+      try {
+        localStorage.setItem("saloriya_cart", JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+  };
+
+  const clearCart = () => {
+    setCart([]);
+    try {
+      localStorage.removeItem("saloriya_cart");
+    } catch (e) {}
+  };
+
+  const openCart = () => setIsCartOpen(true);
+  const closeCart = () => setIsCartOpen(false);
+
+  const cartCount = useMemo(() => {
+    return cart.reduce((total, item) => total + (item.quantity || 1), 0);
+  }, [cart]);
+
+  const cartSubtotalPaise = useMemo(() => {
+    return cart.reduce((total, item) => total + ((item.unit_price_paise || 0) * (item.quantity || 1)), 0);
+  }, [cart]);
+
+  const openCartCheckout = () => {
+    if (cart.length === 0) return;
+    setIsCartOpen(false);
+    setCheckoutItems([...cart]);
+    setCheckoutItem({
+      product: cart[0].product,
+      initialColour: cart[0].colour,
+      isMultiItem: cart.length > 1,
+      items: [...cart]
+    });
+  };
+
+  const openCheckout = (product, initialColour = null) => {
+    const colour = initialColour || (product.colours && product.colours[0]) || "Standard";
+    const itemImage = getColourImage(product, colour, 0) || product.image_urls?.[0] || product.images?.[0] || "";
+    const singleCartItem = {
+      cartItemId: `${product.id || product.slug}_${colour}`,
+      product,
+      productId: product.id || product.slug,
+      name: product.name,
+      colour,
+      image: itemImage,
+      unit_price_paise: product.price_paise || 0,
+      quantity: 1,
+      stock: product.stock ?? 5
+    };
+    setCheckoutItems([singleCartItem]);
+    setCheckoutItem({
+      product,
+      initialColour: colour,
+      isMultiItem: false,
+      items: [singleCartItem]
+    });
+  };
+
+  const closeCheckout = () => {
+    setCheckoutItem(null);
+    setCheckoutItems([]);
+  };
 
   // Available unique colours
   const availableColours = useMemo(() => {
@@ -533,8 +668,21 @@ export function StoreProvider({ children }) {
     openPreview,
     closePreview,
     checkoutItem,
+    checkoutItems,
     openCheckout,
     closeCheckout,
+    cart,
+    isCartOpen,
+    cartCount,
+    cartSubtotalPaise,
+    cartToast,
+    addToCart,
+    updateCartQuantity,
+    removeFromCart,
+    clearCart,
+    openCart,
+    closeCart,
+    openCartCheckout,
     updateProductStock,
     toggleProductPublish,
     deleteProduct,

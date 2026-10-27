@@ -173,13 +173,13 @@ function vercelApiDevPlugin() {
           }
 
           // GET /api/orders
-          if (req.method === "GET" && url === "/api/orders") {
-            const orders = readOrders();
+          if (req.method === "GET" && (url === "/api/orders" || url === "/api/orders/")) {
+            const orders = readOrders().sort((a, b) => new Date(b.created_at || b.updated_at || 0).getTime() - new Date(a.created_at || a.updated_at || 0).getTime());
             return res.json({ success: true, orders });
           }
 
           // POST /api/orders
-          if (req.method === "POST" && url === "/api/orders") {
+          if (req.method === "POST" && (url === "/api/orders" || url === "/api/orders/")) {
             if (!body || !body.order_id) {
               return res.status(400).json({ success: false, error: "Invalid order payload" });
             }
@@ -309,6 +309,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), vercelApiDevPlugin()],
     server: {
+      host: true,
       port: 5173,
       watch: {
         ignored: [

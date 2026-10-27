@@ -3,7 +3,7 @@ import { useStore, getColourImage } from "../../context/StoreContext";
 import { supabase, isSupabaseConfigured } from "../../supabase.js";
 
 export default function CheckoutModal() {
-  const { checkoutItem, closeCheckout, formatMoney, updateProductStock } = useStore();
+  const { checkoutItem, checkoutItems, closeCheckout, formatMoney, updateProductStock, clearCart } = useStore();
 
   const [qty, setQty] = useState(1);
   const [customerName, setCustomerName] = useState("");
@@ -64,7 +64,9 @@ export default function CheckoutModal() {
 
   useEffect(() => {
     if (checkoutItem) {
-      const currentId = `${checkoutItem.product?.id}_${checkoutItem.initialColour}`;
+      const currentId = checkoutItem.isMultiItem
+        ? `cart_${(checkoutItems || []).map((i) => `${i.productId || i.product?.id}_${i.colour}_${i.quantity}`).join("_")}`
+        : `${checkoutItem.product?.id}_${checkoutItem.initialColour}`;
       if (activeCheckoutIdRef.current !== currentId) {
         activeCheckoutIdRef.current = currentId;
         setQty(1);
@@ -87,7 +89,7 @@ export default function CheckoutModal() {
     return () => {
       document.body.classList.remove("modal-open");
     };
-  }, [checkoutItem, confirmedOrder]);
+  }, [checkoutItem, checkoutItems, confirmedOrder]);
 
   // Countdown timer for OTP
   useEffect(() => {
@@ -100,17 +102,37 @@ export default function CheckoutModal() {
 
   if (!checkoutItem && !confirmedOrder) return null;
 
-  const product = checkoutItem?.product || {};
-  const initialColour = checkoutItem?.initialColour || "";
+  // Resolve item list for single or multi-item checkout
+  const activeItems = (Array.isArray(checkoutItems) && checkoutItems.length > 0)
+    ? checkoutItems
+    : (Array.isArray(checkoutItem?.items) && checkoutItem.items.length > 0)
+      ? checkoutItem.items
+      : (checkoutItem?.product ? [{
+        product: checkoutItem.product,
+        productId: checkoutItem.product?.id,
+        name: checkoutItem.product?.name,
+        colour: checkoutItem.initialColour || "Standard",
+        quantity: qty,
+        unit_price_paise: checkoutItem.product?.price_paise || 0,
+        image: (checkoutItem.product?.id ? getColourImage(checkoutItem.product, checkoutItem.initialColour, 0) : "") || checkoutItem.product?.image_urls?.[0] || ""
+      }] : []);
+
+  const isMultiItem = activeItems.length > 1;
+
+  const product = checkoutItem?.product || activeItems[0]?.product || {};
+  const initialColour = checkoutItem?.initialColour || activeItems[0]?.colour || "Standard";
   const maxStock = Math.max(1, product.stock || 5);
   const previewImgUrl =
     (product.id ? getColourImage(product, initialColour, 0) : "") ||
+    activeItems[0]?.image ||
     product.image_urls?.[0] ||
     product.images?.[0] ||
     "";
 
   // Financial calculations
-  const subtotalPaise = (product.price_paise || 0) * qty;
+  const subtotalPaise = isMultiItem
+    ? activeItems.reduce((acc, it) => acc + (it.unit_price_paise || it.product?.price_paise || 0) * (it.quantity || 1), 0)
+    : (product.price_paise || 0) * qty;
   const courierBasePaise = 5000; // ₹50 delivery fee
 
   let deliveryPaise = courierBasePaise;
@@ -326,7 +348,7 @@ export default function CheckoutModal() {
               };
             }
           }
-        } catch (e) {}
+        } catch (e) { }
       }
 
       // 4. Default active store promo codes (guaranteed to work across all devices)
@@ -413,8 +435,8 @@ export default function CheckoutModal() {
             (discountType === "free_delivery"
               ? "Complimentary Free Delivery (Waives ₹50 fee)"
               : discountType === "percentage"
-              ? `${discountVal}% OFF`
-              : `Flat ₹${discountVal} OFF`)
+                ? `${discountVal}% OFF`
+                : `Flat ₹${discountVal} OFF`)
         };
 
         setAppliedPromo(promoObj);
@@ -526,6 +548,35 @@ export default function CheckoutModal() {
       const orderId = `SLR-${Date.now().toString().slice(-6)}`;
       const fullAddress = `${street.trim()}, ${city.trim()}, ${state.trim()} - ${pincode.trim()}`;
 
+      // Assemble all pieces for multi-item or single-item order
+      const orderItems = isMultiItem
+        ? activeItems.map((it) => ({
+          product_id: it.productId || it.product?.id || it.product?.slug,
+          product_name: it.name || it.product?.name,
+          variant_colour: it.colour || "Standard",
+          quantity: it.quantity || 1,
+          unit_price_paise: it.unit_price_paise || it.product?.price_paise || 0,
+          subtotal_paise: (it.unit_price_paise || it.product?.price_paise || 0) * (it.quantity || 1),
+          product_image: it.image || (it.product ? getColourImage(it.product, it.colour, 0) : "") || it.product?.image_urls?.[0] || ""
+        }))
+        : [{
+          product_id: product.id || product.slug,
+          product_name: product.name,
+          variant_colour: initialColour,
+          quantity: qty,
+          unit_price_paise: product.price_paise || 0,
+          subtotal_paise: subtotalPaise,
+          product_image: previewImgUrl
+        }];
+
+      const totalOrderedQty = isMultiItem
+        ? activeItems.reduce((acc, it) => acc + (it.quantity || 1), 0)
+        : qty;
+
+      const summaryProductName = isMultiItem
+        ? activeItems.map((it) => `${it.name || it.product?.name} (${it.colour || "Standard"} ×${it.quantity || 1})`).join(", ")
+        : product.name;
+
       const orderPayload = {
         order_id: orderId,
         customer_name: customerName.trim(),
@@ -533,11 +584,12 @@ export default function CheckoutModal() {
         customer_phone: cleanCustomerPhone,
         email_token: emailToken || null,
         delivery_address: fullAddress,
-        product_id: product.id,
-        product_name: product.name,
-        product_image: previewImgUrl,
-        variant_colour: initialColour,
-        quantity: qty,
+        product_id: isMultiItem ? "multi_item" : (product.id || product.slug),
+        product_name: summaryProductName,
+        product_image: previewImgUrl || (activeItems[0] && activeItems[0].image) || "",
+        variant_colour: isMultiItem ? "Multiple" : initialColour,
+        quantity: totalOrderedQty,
+        items: orderItems,
         subtotal_paise: subtotalPaise,
         total_paise: totalPaise,
         discount_paise: effectiveDiscountPaise,
@@ -546,7 +598,9 @@ export default function CheckoutModal() {
         payment_screenshot: screenshotDataUrl || null,
         promo_code: appliedPromo ? appliedPromo.code : null,
         status: "confirmed",
-        created_at: new Date().toISOString()
+        order_status: "confirmed",
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
       };
 
       // 1. Save to Central Orders API (accessible across all devices & admin console)
@@ -589,7 +643,7 @@ export default function CheckoutModal() {
               total_paise: totalPaise,
               discount_paise: effectiveDiscountPaise,
               promo_code: appliedPromo ? appliedPromo.code : null
-            }]).catch(() => {});
+            }]).catch(() => { });
           }
         }
       } catch (dbErr) {
@@ -601,9 +655,9 @@ export default function CheckoutModal() {
         const existing = JSON.parse(localStorage.getItem("saloriya_admin_orders") || "[]");
         existing.unshift(orderPayload);
         localStorage.setItem("saloriya_admin_orders", JSON.stringify(existing));
-      } catch (e) {}
+      } catch (e) { }
 
-      // 3. Dispatch FormSubmit notification
+      // 4. Dispatch FormSubmit notification
       try {
         fetch("https://formsubmit.co/ajax/Saloriyaofficial@gmail.com", {
           method: "POST",
@@ -615,23 +669,32 @@ export default function CheckoutModal() {
             "Verified Email": cleanEmail,
             "Customer Phone": cleanCustomerPhone,
             "Delivery Address": fullAddress,
-            "Jewellery Piece": product.name,
-            "Colour": initialColour,
-            "Quantity": `${qty} pc`,
+            "Jewellery Pieces": summaryProductName,
+            "Quantity": `${totalOrderedQty} pc(s)`,
             "Total Amount": formatMoney(totalPaise),
             "Payment Method": paymentMethod === "prepaid" ? "Online UPI (Prepaid)" : "Cash on Delivery (COD)",
             "Order Status": "CONFIRMED & EMAIL-VERIFIED ✓"
           })
-        }).catch(() => {});
-      } catch (e) {}
+        }).catch(() => { });
+      } catch (e) { }
 
-      // Deduct stock immediately
-      try {
-        const updatedStock = Math.max(0, (product.stock || 5) - qty);
-        await updateProductStock(product.id, updatedStock);
-      } catch (stockErr) {
-        console.warn("Stock deduction warning:", stockErr);
+      // 5. Deduct stock for all ordered pieces
+      for (const it of orderItems) {
+        try {
+          const pId = it.product_id;
+          if (pId) {
+            const pObj = (checkoutItem?.product?.id === pId ? checkoutItem.product : null) || (it.product || product);
+            const currentStock = pObj?.stock ?? 5;
+            const updatedStock = Math.max(0, currentStock - (it.quantity || 1));
+            await updateProductStock(pId, updatedStock);
+          }
+        } catch (stockErr) {
+          console.warn("Stock deduction warning:", stockErr);
+        }
       }
+
+      // 6. Clear shopping cart on successful order placement
+      clearCart();
 
       setSubmitting(false);
       setConfirmedOrder({
@@ -640,16 +703,18 @@ export default function CheckoutModal() {
         totalPaise,
         cleanCustomerPhone,
         customerEmail: cleanEmail,
-        productName: product.name,
-        variantColour: initialColour,
-        quantity: qty,
+        productName: summaryProductName,
+        variantColour: isMultiItem ? "Multiple" : initialColour,
+        quantity: totalOrderedQty,
         productImg: previewImgUrl,
-        paymentMethod
+        paymentMethod,
+        isMultiItem,
+        items: orderItems
       });
 
-    if (dialogRef.current) {
-      dialogRef.current.scrollTop = 0;
-    }
+      if (dialogRef.current) {
+        dialogRef.current.scrollTop = 0;
+      }
     } catch (err) {
       console.error("Order placement error:", err);
       setFormError("Could not complete order. Please try again or message us on WhatsApp.");
@@ -774,48 +839,76 @@ export default function CheckoutModal() {
                   boxShadow: "0 2px 10px rgba(0,0,0,0.03)"
                 }}
               >
-                <div style={{ display: "flex", gap: "14px", alignItems: "center", borderBottom: "1px solid var(--line-subtle)", paddingBottom: "12px", marginBottom: "12px" }}>
-                  {confirmedOrder.productImg ? (
-                    <img
-                      src={confirmedOrder.productImg}
-                      alt={confirmedOrder.productName}
-                      style={{
-                        width: "64px",
-                        height: "64px",
-                        borderRadius: "8px",
-                        objectFit: "cover",
-                        border: "1px solid var(--line)"
-                      }}
-                    />
-                  ) : (
-                    <div
-                      style={{
-                        width: "64px",
-                        height: "64px",
-                        borderRadius: "8px",
-                        display: "grid",
-                        placeItems: "center",
-                        background: "#faf4f0",
-                        color: "var(--wine)",
-                        fontFamily: "serif",
-                        fontSize: "20px"
-                      }}
-                    >
-                      S
+                {confirmedOrder.isMultiItem && Array.isArray(confirmedOrder.items) && confirmedOrder.items.length > 1 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: "10px", borderBottom: "1px solid var(--line-subtle)", paddingBottom: "12px", marginBottom: "12px" }}>
+                    <div style={{ fontSize: "12px", fontWeight: 700, color: "var(--wine)" }}>
+                      Items Ordered ({confirmedOrder.quantity} pieces):
                     </div>
-                  )}
-                  <div style={{ flex: 1 }}>
-                    <strong style={{ fontSize: "14.5px", color: "var(--ink)", display: "block" }}>
-                      {confirmedOrder.productName}
-                    </strong>
-                    <div style={{ fontSize: "12px", color: "var(--muted)", marginTop: "2px" }}>
-                      Colour: <strong>{confirmedOrder.variantColour}</strong> · Qty: <strong>{confirmedOrder.quantity} pc</strong>
-                    </div>
+                    {confirmedOrder.items.map((it, idx) => (
+                      <div key={idx} style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+                        <img
+                          src={it.product_image || confirmedOrder.productImg || ""}
+                          alt={it.product_name}
+                          style={{ width: "46px", height: "46px", borderRadius: "6px", objectFit: "cover", border: "1px solid var(--line)" }}
+                        />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <strong style={{ fontSize: "13px", color: "var(--ink)", display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {it.product_name}
+                          </strong>
+                          <div style={{ fontSize: "11px", color: "var(--muted)" }}>
+                            Colour: <strong>{it.variant_colour}</strong> · Qty: <strong>{it.quantity} pc</strong>
+                          </div>
+                        </div>
+                        <strong style={{ fontSize: "13px", color: "var(--wine)" }}>
+                          {formatMoney(it.subtotal_paise || (it.unit_price_paise * it.quantity))}
+                        </strong>
+                      </div>
+                    ))}
                   </div>
-                  <strong style={{ fontSize: "16px", color: "var(--wine)" }}>
-                    {formatMoney(confirmedOrder.totalPaise)}
-                  </strong>
-                </div>
+                ) : (
+                  <div style={{ display: "flex", gap: "14px", alignItems: "center", borderBottom: "1px solid var(--line-subtle)", paddingBottom: "12px", marginBottom: "12px" }}>
+                    {confirmedOrder.productImg ? (
+                      <img
+                        src={confirmedOrder.productImg}
+                        alt={confirmedOrder.productName}
+                        style={{
+                          width: "64px",
+                          height: "64px",
+                          borderRadius: "8px",
+                          objectFit: "cover",
+                          border: "1px solid var(--line)"
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          width: "64px",
+                          height: "64px",
+                          borderRadius: "8px",
+                          display: "grid",
+                          placeItems: "center",
+                          background: "#faf4f0",
+                          color: "var(--wine)",
+                          fontFamily: "serif",
+                          fontSize: "20px"
+                        }}
+                      >
+                        S
+                      </div>
+                    )}
+                    <div style={{ flex: 1 }}>
+                      <strong style={{ fontSize: "14.5px", color: "var(--ink)", display: "block" }}>
+                        {confirmedOrder.productName}
+                      </strong>
+                      <div style={{ fontSize: "12px", color: "var(--muted)", marginTop: "2px" }}>
+                        Colour: <strong>{confirmedOrder.variantColour}</strong> · Qty: <strong>{confirmedOrder.quantity} pc</strong>
+                      </div>
+                    </div>
+                    <strong style={{ fontSize: "16px", color: "var(--wine)" }}>
+                      {formatMoney(confirmedOrder.totalPaise)}
+                    </strong>
+                  </div>
+                )}
 
                 <div style={{ fontSize: "12.5px", color: "var(--ink-secondary)", display: "flex", flexDirection: "column", gap: "6px" }}>
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
@@ -859,7 +952,7 @@ export default function CheckoutModal() {
                     boxSizing: "border-box"
                   }}
                 >
-                  Track Order on WhatsApp 
+                  Track Order on WhatsApp
                 </a>
               </div>
             </div>
@@ -884,40 +977,75 @@ export default function CheckoutModal() {
               </div>
 
               {/* Product Summary */}
-              <div className="checkout-product-summary" style={{ margin: "0 0 4px" }}>
-                <div className="checkout-thumb">
-                  {previewImgUrl ? (
-                    <img src={previewImgUrl} alt={product.name} />
-                  ) : (
-                    <div style={{ display: "grid", placeItems: "center", width: "100%", height: "100%", background: "#f5e6de", color: "var(--wine)", fontWeight: 700 }}>
-                      S
-                    </div>
-                  )}
-                </div>
-                <div className="checkout-product-details">
-                  <span className="checkout-product-title">{product.name}</span>
-                  <span className="checkout-product-variant">Colour: {initialColour}</span>
-                  <strong style={{ color: "var(--wine)", fontSize: "14px" }}>{formatMoney(product.price_paise)} each</strong>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}>
-                    <span style={{ fontSize: "11px", color: "var(--muted)" }}>Qty:</span>
-                    <button
-                      type="button"
-                      style={{ padding: "2px 10px", background: "#f5e6de", border: "1px solid var(--line)", borderRadius: "4px", fontWeight: "bold" }}
-                      onClick={() => setQty((q) => Math.max(1, q - 1))}
-                    >
-                      -
-                    </button>
-                    <span style={{ fontWeight: 700, minWidth: "16px", textAlign: "center" }}>{qty}</span>
-                    <button
-                      type="button"
-                      style={{ padding: "2px 10px", background: "#f5e6de", border: "1px solid var(--line)", borderRadius: "4px", fontWeight: "bold" }}
-                      onClick={() => setQty((q) => Math.min(maxStock, q + 1))}
-                    >
-                      +
-                    </button>
+              {isMultiItem ? (
+                <div className="checkout-multi-summary-box" style={{ background: "#fdfbf9", border: "1.5px solid var(--gold-border)", borderRadius: "10px", padding: "12px 14px", margin: "0 0 6px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                    <strong style={{ fontSize: "12.5px", color: "var(--wine)" }}>
+                      👜 Items in Bag ({activeItems.reduce((acc, it) => acc + (it.quantity || 1), 0)} Pieces)
+                    </strong>
+                    <span style={{ fontSize: "12px", color: "var(--wine)", fontWeight: 700 }}>
+                      Subtotal: {formatMoney(subtotalPaise)}
+                    </span>
+                  </div>
+                  <div style={{ maxHeight: "160px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "8px", paddingRight: "4px" }}>
+                    {activeItems.map((it, idx) => (
+                      <div key={it.cartItemId || idx} style={{ display: "flex", gap: "10px", alignItems: "center", background: "#ffffff", border: "1px solid var(--line-subtle)", borderRadius: "6px", padding: "6px 10px" }}>
+                        <img
+                          src={it.image || (it.product ? getColourImage(it.product, it.colour, 0) : "") || ""}
+                          alt={it.name}
+                          style={{ width: "40px", height: "40px", borderRadius: "6px", objectFit: "cover", border: "1px solid var(--line)" }}
+                        />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ fontSize: "12.5px", fontWeight: 700, color: "var(--ink)", display: "block", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {it.name || it.product?.name}
+                          </span>
+                          <span style={{ fontSize: "11px", color: "var(--muted)" }}>
+                            {it.colour && it.colour !== "Standard" ? `Colour: ${it.colour} · ` : ""}Qty: <strong>{it.quantity || 1}</strong>
+                          </span>
+                        </div>
+                        <strong style={{ fontSize: "12.5px", color: "var(--wine)" }}>
+                          {formatMoney((it.unit_price_paise || it.product?.price_paise || 0) * (it.quantity || 1))}
+                        </strong>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              </div>
+              ) : (
+                <div className="checkout-product-summary" style={{ margin: "0 0 4px" }}>
+                  <div className="checkout-thumb">
+                    {previewImgUrl ? (
+                      <img src={previewImgUrl} alt={product.name} />
+                    ) : (
+                      <div style={{ display: "grid", placeItems: "center", width: "100%", height: "100%", background: "#f5e6de", color: "var(--wine)", fontWeight: 700 }}>
+                        S
+                      </div>
+                    )}
+                  </div>
+                  <div className="checkout-product-details">
+                    <span className="checkout-product-title">{product.name}</span>
+                    <span className="checkout-product-variant">Colour: {initialColour}</span>
+                    <strong style={{ color: "var(--wine)", fontSize: "14px" }}>{formatMoney(product.price_paise)} each</strong>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}>
+                      <span style={{ fontSize: "11px", color: "var(--muted)" }}>Qty:</span>
+                      <button
+                        type="button"
+                        style={{ padding: "2px 10px", background: "#f5e6de", border: "1px solid var(--line)", borderRadius: "4px", fontWeight: "bold" }}
+                        onClick={() => setQty((q) => Math.max(1, q - 1))}
+                      >
+                        -
+                      </button>
+                      <span style={{ fontWeight: 700, minWidth: "16px", textAlign: "center" }}>{qty}</span>
+                      <button
+                        type="button"
+                        style={{ padding: "2px 10px", background: "#f5e6de", border: "1px solid var(--line)", borderRadius: "4px", fontWeight: "bold" }}
+                        onClick={() => setQty((q) => Math.min(maxStock, q + 1))}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Field 1: Full Name */}
               <div className="form-group" style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -1022,21 +1150,24 @@ export default function CheckoutModal() {
                     <button
                       id="checkout-verify-email-btn"
                       type="button"
-                      className="btn-verify-trigger button-gold"
+                      className="button button-gold"
                       onClick={handleSendOtp}
                       disabled={otpSending}
                       style={{
-                        background: "var(--wine)",
-                        color: "#fff",
-                        border: "none",
-                        padding: "10px 16px",
+                        padding: "8px 16px",
                         fontSize: "12px",
                         fontWeight: 700,
-                        cursor: "pointer",
-                        whiteSpace: "nowrap"
+                        margin: "4px",
+                        borderRadius: "5px",
+                        cursor: otpSending ? "wait" : "pointer",
+                        whiteSpace: "nowrap",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "6px",
+                        opacity: otpSending ? 0.7 : 1
                       }}
                     >
-                      {otpSending ? "Sending…" : "Send Code ✉️"}
+                      {otpSending ? "Sending…" : "Send Code 📩"}
                     </button>
                   )}
                 </div>
@@ -1332,7 +1463,7 @@ export default function CheckoutModal() {
                         boxSizing: "border-box"
                       }}
                     >
-                      ⚡ Open Installed UPI App on Mobile 
+                      ⚡ Open Installed UPI App on Mobile
                     </a>
 
                     {/* Quick App Shortcut Row */}
@@ -1613,8 +1744,8 @@ export default function CheckoutModal() {
                         {appliedPromo.discount_type === "free_delivery"
                           ? "✓ Free Delivery Applied (₹50 OFF)"
                           : appliedPromo.discount_type === "percentage"
-                          ? `✓ ${appliedPromo.amount || 10}% OFF Applied`
-                          : `✓ Flat ₹${appliedPromo.amount || 50} OFF Applied`}
+                            ? `✓ ${appliedPromo.amount || 10}% OFF Applied`
+                            : `✓ Flat ₹${appliedPromo.amount || 50} OFF Applied`}
                       </div>
                     </div>
                     <button
@@ -1818,8 +1949,8 @@ export default function CheckoutModal() {
                 {submitting
                   ? "Placing Order…"
                   : paymentMethod === "prepaid"
-                  ? `CONFIRM & SUBMIT ONLINE ORDER (${formatMoney(totalPaise)}) 💳`
-                  : `CONFIRM & PLACE ORDER (${formatMoney(totalPaise)}) `}
+                    ? `CONFIRM & SUBMIT ONLINE ORDER (${formatMoney(totalPaise)}) 💳`
+                    : `CONFIRM & PLACE ORDER (${formatMoney(totalPaise)}) `}
               </button>
             </form>
           )}

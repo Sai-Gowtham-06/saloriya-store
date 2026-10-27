@@ -2,12 +2,17 @@ import React from "react";
 
 export default function AdminMetrics({ orders }) {
   const totalOrders = orders.length;
-  const pendingOrders = orders.filter((o) => o.status === "pending" || !o.status).length;
-  const confirmedOrders = orders.filter((o) => o.status === "confirmed" || o.status === "dispatched" || o.status === "delivered").length;
+  const getStatus = (o) => String(o?.status || o?.order_status || "confirmed").toLowerCase();
+
+  const pendingOrders = orders.filter((o) => getStatus(o) === "pending").length;
+  const confirmedOrders = orders.filter((o) => {
+    const s = getStatus(o);
+    return s === "confirmed" || s === "dispatched" || s === "shipped" || s === "delivered";
+  }).length;
   
   const totalRevenuePaise = orders
-    .filter((o) => o.status !== "cancelled")
-    .reduce((sum, o) => sum + (o.total_paise || 0), 0);
+    .filter((o) => getStatus(o) !== "cancelled")
+    .reduce((sum, o) => sum + (o?.total_paise || 0), 0);
 
   const formatRevenue = (paise) => {
     return new Intl.NumberFormat("en-IN", {

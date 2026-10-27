@@ -9,6 +9,7 @@ import AdminPromoManager from "../components/admin/AdminPromoManager";
 import AdminRecordOrderModal from "../components/admin/AdminRecordOrderModal";
 import { useStore } from "../context/StoreContext";
 import { supabase, isSupabaseConfigured } from "../supabase.js";
+import ordersSeed from "../ordersSeed.json";
 
 export default function AdminPage() {
   const { products, fetchProducts } = useStore();
@@ -17,7 +18,16 @@ export default function AdminPage() {
   });
 
   const [activeTab, setActiveTab] = useState("orders"); // 'orders' | 'products' | 'inventory' | 'promos'
-  const [orders, setOrders] = useState([]);
+  const [orders, setOrders] = useState(() => {
+    try {
+      const local = JSON.parse(localStorage.getItem("saloriya_admin_orders") || "[]");
+      if (Array.isArray(local) && local.length > 0) {
+        return [...local].sort((a, b) => new Date(b.created_at || b.updated_at || 0).getTime() - new Date(a.created_at || a.updated_at || 0).getTime());
+      }
+    } catch (e) {}
+    const seed = Array.isArray(ordersSeed) ? ordersSeed : [];
+    return [...seed].sort((a, b) => new Date(b.created_at || b.updated_at || 0).getTime() - new Date(a.created_at || a.updated_at || 0).getTime());
+  });
   const [editingProduct, setEditingProduct] = useState(null);
   const [showRecordModal, setShowRecordModal] = useState(false);
   const [promosCount, setPromosCount] = useState(() => {
@@ -73,7 +83,8 @@ export default function AdminPage() {
             order_id: o.order_id || (o.id ? `SLR-${String(o.id).slice(-6).toUpperCase()}` : `SLR-${Date.now().toString().slice(-6)}`),
             customer_phone: o.customer_phone || o.phone || "",
             delivery_address: o.delivery_address || (typeof o.address === "object" ? (o.address?.full || `${o.address?.street || ""}, ${o.address?.city || ""}`) : String(o.address || "")),
-            status: o.status || o.order_status || "confirmed"
+            status: (o.status || o.order_status || "confirmed").toLowerCase(),
+            payment_method: (o.payment_method || "cod").toLowerCase()
           }));
         }
       } catch (e) {
@@ -87,25 +98,42 @@ export default function AdminPage() {
       if (Array.isArray(local)) localList = local;
     } catch (e) {}
 
-    // Merge and deduplicate across Central API, Supabase, and localStorage
+    // Baseline seed to guarantee orders appear on any client/network immediately
+    const baseSeed = Array.isArray(ordersSeed) ? ordersSeed : [];
+
+    // Merge and deduplicate across Baseline Seed, Central API, Supabase, and localStorage
     const mergedMap = new Map();
-    [...apiList, ...sbList, ...localList].forEach((o) => {
+    [...baseSeed, ...apiList, ...sbList, ...localList].forEach((o) => {
       if (!o) return;
       const key = (o.order_id && String(o.order_id).trim()) || (o.id && String(o.id).trim());
+      const normalizedItem = {
+        ...o,
+        order_id: o.order_id || (o.id ? `SLR-${String(o.id).slice(-6).toUpperCase()}` : `SLR-${Date.now().toString().slice(-6)}`),
+        customer_phone: o.customer_phone || o.phone || "",
+        delivery_address: o.delivery_address || (typeof o.address === "object" ? (o.address?.full || `${o.address?.street || ""}, ${o.address?.city || ""}`) : String(o.address || "")),
+        status: (o.status || o.order_status || "confirmed").toLowerCase(),
+        payment_method: (o.payment_method || "cod").toLowerCase()
+      };
+
       if (key && key !== "undefined" && key !== "null") {
         if (!mergedMap.has(key)) {
-          mergedMap.set(key, o);
+          mergedMap.set(key, normalizedItem);
+        } else {
+          const existing = mergedMap.get(key);
+          const existingTime = new Date(existing.updated_at || existing.created_at || 0).getTime();
+          const newTime = new Date(o.updated_at || o.created_at || 0).getTime();
+          if (newTime >= existingTime) {
+            mergedMap.set(key, { ...existing, ...normalizedItem });
+          }
         }
       } else {
         const fallbackKey = `order_${mergedMap.size}_${o.created_at || Date.now()}`;
-        mergedMap.set(fallbackKey, {
-          ...o,
-          order_id: o.order_id || `SLR-${Date.now().toString().slice(-6)}`
-        });
+        mergedMap.set(fallbackKey, normalizedItem);
       }
     });
 
     let list = Array.from(mergedMap.values());
+    list.sort((a, b) => new Date(b.created_at || b.updated_at || 0).getTime() - new Date(a.created_at || a.updated_at || 0).getTime());
 
     const deletedIds = getDeletedOrderIds();
     if (deletedIds.length > 0) {
@@ -116,6 +144,11 @@ export default function AdminPage() {
         if (uid && deletedIds.includes(uid)) return false;
         return true;
       });
+    }
+
+    // Safety fallback: if list is empty but seed exists and no deletedIds, keep seed
+    if (list.length === 0 && baseSeed.length > 0 && deletedIds.length === 0) {
+      list = [...baseSeed];
     }
 
     // Keep localStorage synchronized with latest unified list
@@ -150,10 +183,27 @@ export default function AdminPage() {
   }, []);
 
   useEffect(() => {
-    if (isAuthenticated) {
+    if (!isAuthenticated) return;
+    loadOrders();
+    fetchProducts();
+
+    const handleSync = () => {
+      if (document.visibilityState === "visible") {
+        loadOrders();
+      }
+    };
+    window.addEventListener("focus", handleSync);
+    document.addEventListener("visibilitychange", handleSync);
+
+    const interval = setInterval(() => {
       loadOrders();
-      fetchProducts();
-    }
+    }, 30000);
+
+    return () => {
+      window.removeEventListener("focus", handleSync);
+      document.removeEventListener("visibilitychange", handleSync);
+      clearInterval(interval);
+    };
   }, [isAuthenticated]);
 
   const handleLoginSuccess = () => {
@@ -183,7 +233,9 @@ export default function AdminPage() {
     );
   }
 
-  const pendingOrdersCount = orders.filter((o) => o.status === "pending").length;
+  const [openAddProductTrigger, setOpenAddProductTrigger] = useState(0);
+
+  const pendingOrdersCount = orders.filter((o) => (o.status || o.order_status || "").toLowerCase() === "pending").length;
 
   return (
     <div className="admin-body">
@@ -200,8 +252,20 @@ export default function AdminPage() {
             </div>
             <div className="admin-header-actions">
               <button
-                id="open-record-order-btn"
+                id="admin-add-piece-header-btn"
                 className="button button-gold"
+                type="button"
+                onClick={() => {
+                  setActiveTab("products");
+                  setEditingProduct(null);
+                  setOpenAddProductTrigger((t) => t + 1);
+                }}
+              >
+                + Add Piece
+              </button>
+              <button
+                id="open-record-order-btn"
+                className="button button-outline"
                 type="button"
                 onClick={() => setShowRecordModal(true)}
               >
@@ -271,6 +335,7 @@ export default function AdminPage() {
               onProductChanged={fetchProducts}
               editingProduct={editingProduct}
               setEditingProduct={setEditingProduct}
+              openAddTrigger={openAddProductTrigger}
             />
           )}
 

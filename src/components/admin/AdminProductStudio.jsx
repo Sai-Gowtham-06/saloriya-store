@@ -3,7 +3,7 @@ import { useStore } from "../../context/StoreContext";
 import { supabase, isSupabaseConfigured } from "../../supabase.js";
 import AdminDeleteConfirmModal from "./AdminDeleteConfirmModal.jsx";
 
-export default function AdminProductStudio({ products, onProductChanged, editingProduct, setEditingProduct }) {
+export default function AdminProductStudio({ products, onProductChanged, editingProduct, setEditingProduct, openAddTrigger }) {
   const {
     updateProductStock,
     toggleProductPublish,
@@ -92,6 +92,16 @@ export default function AdminProductStudio({ products, onProductChanged, editing
     setFormMsg("");
     setIsFormOpen(true);
   };
+
+  React.useEffect(() => {
+    if (openAddTrigger) {
+      handleOpenAdd();
+      setTimeout(() => {
+        const panel = document.getElementById("product-form-panel") || document.getElementById("view-products");
+        if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 100);
+    }
+  }, [openAddTrigger]);
 
   const handleCloseForm = () => {
     setIsFormOpen(false);

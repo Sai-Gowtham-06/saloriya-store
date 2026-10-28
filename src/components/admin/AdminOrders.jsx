@@ -83,6 +83,25 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
           .from("orders")
           .update({ status: newStatus, order_status: newStatus })
           .or(`order_id.eq.${targetOrderId},id.eq.${targetOrderId}`);
+
+        // Update Cloud Sync Channel for instant cross-device sync
+        try {
+          const { data: syncRows } = await supabase
+            .from("promo_codes")
+            .select("*")
+            .eq("code", `SYNC_ORDER_${targetOrderId}`)
+            .limit(1);
+          if (Array.isArray(syncRows) && syncRows.length > 0 && syncRows[0]?.description) {
+            const parsed = JSON.parse(syncRows[0].description);
+            parsed.status = newStatus;
+            parsed.order_status = newStatus;
+            parsed.updated_at = new Date().toISOString();
+            await supabase
+              .from("promo_codes")
+              .update({ description: JSON.stringify(parsed) })
+              .eq("code", `SYNC_ORDER_${targetOrderId}`);
+          }
+        } catch (syncErr) {}
       }
     } catch (e) {
       console.warn("Supabase update error:", e);
@@ -171,6 +190,12 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
       if (isSupabaseConfigured) {
         if (targetOrderId) await supabase.from("orders").delete().eq("order_id", targetOrderId);
         if (targetDbId && targetDbId !== targetOrderId) await supabase.from("orders").delete().eq("id", targetDbId);
+
+        // Also remove from Supabase Cloud Sync channel
+        try {
+          if (targetOrderId) await supabase.from("promo_codes").delete().eq("code", `SYNC_ORDER_${targetOrderId}`);
+          if (targetDbId && targetDbId !== targetOrderId) await supabase.from("promo_codes").delete().eq("code", `SYNC_ORDER_${targetDbId}`);
+        } catch (syncErr) {}
       }
     } catch (e) {
       console.warn("Supabase delete order:", e);

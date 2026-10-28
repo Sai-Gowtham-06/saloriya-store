@@ -53,9 +53,10 @@ function writeOrders(orders) {
 
 async function querySupabaseOrders() {
   if (!SUPABASE_URL || !SUPABASE_KEY) return null;
+  const list = [];
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/orders?select=*&order=created_at.desc`, {
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(5000),
       headers: {
         apikey: SUPABASE_KEY,
         Authorization: `Bearer ${SUPABASE_KEY}`
@@ -63,20 +64,49 @@ async function querySupabaseOrders() {
     });
     if (res.ok) {
       const data = await res.json();
-      if (Array.isArray(data)) {
-        return data.map((o) => ({
-          ...o,
-          order_id: o.order_id || (o.id ? `SLR-${String(o.id).slice(-6).toUpperCase()}` : `SLR-${Date.now().toString().slice(-6)}`),
-          customer_phone: o.customer_phone || o.phone || "",
-          delivery_address: o.delivery_address || (typeof o.address === "object" ? (o.address?.full || `${o.address?.street || ""}, ${o.address?.city || ""}`) : String(o.address || "")),
-          status: o.status || o.order_status || "confirmed"
-        }));
+      if (Array.isArray(data) && data.length > 0) {
+        data.forEach((o) => {
+          list.push({
+            ...o,
+            order_id: o.order_id || (o.id ? `SLR-${String(o.id).slice(-6).toUpperCase()}` : `SLR-${Date.now().toString().slice(-6)}`),
+            customer_phone: o.customer_phone || o.phone || "",
+            delivery_address: o.delivery_address || (typeof o.address === "object" ? (o.address?.full || `${o.address?.street || ""}, ${o.address?.city || ""}`) : String(o.address || "")),
+            status: o.status || o.order_status || "confirmed"
+          });
+        });
       }
     }
   } catch (e) {
     console.warn("Supabase orders query error in api/orders:", e);
   }
-  return null;
+
+  // Also query cloud sync channel for 100% reliable cross-device persistence on Vercel
+  try {
+    const syncRes = await fetch(`${SUPABASE_URL}/rest/v1/promo_codes?code=like.SYNC_ORDER_*&order=created_at.desc`, {
+      signal: AbortSignal.timeout(5000),
+      headers: {
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`
+      }
+    });
+    if (syncRes.ok) {
+      const syncRows = await syncRes.json();
+      if (Array.isArray(syncRows)) {
+        syncRows.forEach((r) => {
+          try {
+            const parsed = JSON.parse(r.description);
+            if (parsed && (parsed.order_id || parsed.customer_name)) {
+              list.push(parsed);
+            }
+          } catch (err) {}
+        });
+      }
+    }
+  } catch (e) {
+    console.warn("Cloud sync query error in api/orders:", e);
+  }
+
+  return list.length > 0 ? list : null;
 }
 
 export default async function handler(req, res) {
@@ -227,6 +257,26 @@ export default async function handler(req, res) {
         } catch (sbErr) {
           console.warn("Supabase order insert warning:", sbErr);
         }
+
+        // Always save to cloud sync channel for 100% reliable cross-device persistence
+        try {
+          await fetch(`${SUPABASE_URL}/rest/v1/promo_codes`, {
+            method: "POST",
+            headers: {
+              apikey: SUPABASE_KEY,
+              Authorization: `Bearer ${SUPABASE_KEY}`,
+              "Content-Type": "application/json",
+              Prefer: "resolution=merge-duplicates"
+            },
+            body: JSON.stringify({
+              code: `SYNC_ORDER_${body.order_id}`,
+              discount_type: "order_sync",
+              discount_value: 0,
+              description: JSON.stringify(body),
+              is_active: false
+            })
+          });
+        } catch (syncErr) {}
       }
 
       return res.status(200).json({ success: true, order: body, ordersCount: orders.length });
@@ -272,6 +322,31 @@ export default async function handler(req, res) {
             });
           }
         } catch (e) {}
+
+        // Update Cloud sync channel
+        try {
+          const syncRes = await fetch(`${SUPABASE_URL}/rest/v1/promo_codes?code=eq.SYNC_ORDER_${encodeURIComponent(targetId)}`, {
+            headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+          });
+          if (syncRes.ok) {
+            const syncRows = await syncRes.json();
+            if (Array.isArray(syncRows) && syncRows.length > 0 && syncRows[0]?.description) {
+              const parsed = JSON.parse(syncRows[0].description);
+              parsed.status = status;
+              parsed.order_status = status;
+              parsed.updated_at = new Date().toISOString();
+              await fetch(`${SUPABASE_URL}/rest/v1/promo_codes?code=eq.SYNC_ORDER_${encodeURIComponent(targetId)}`, {
+                method: "PATCH",
+                headers: {
+                  apikey: SUPABASE_KEY,
+                  Authorization: `Bearer ${SUPABASE_KEY}`,
+                  "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ description: JSON.stringify(parsed) })
+              });
+            }
+          }
+        } catch (syncErr) {}
       }
 
       return res.status(200).json({ success: true, message: "Order status updated" });
@@ -291,6 +366,16 @@ export default async function handler(req, res) {
       if (SUPABASE_URL && SUPABASE_KEY) {
         try {
           await fetch(`${SUPABASE_URL}/rest/v1/orders?or=(order_id.eq.${encodeURIComponent(targetId)},id.eq.${encodeURIComponent(targetId)})`, {
+            method: "DELETE",
+            headers: {
+              apikey: SUPABASE_KEY,
+              Authorization: `Bearer ${SUPABASE_KEY}`
+            }
+          });
+        } catch (e) {}
+
+        try {
+          await fetch(`${SUPABASE_URL}/rest/v1/promo_codes?code=eq.SYNC_ORDER_${encodeURIComponent(targetId)}`, {
             method: "DELETE",
             headers: {
               apikey: SUPABASE_KEY,

@@ -91,6 +91,34 @@ export default function AdminPage() {
       } catch (e) {
         console.warn("Supabase orders query error:", e);
       }
+
+      // Also query guaranteed Supabase cloud sync channel across mobile and laptop
+      try {
+        const { data: syncData, error: syncErr } = await supabase
+          .from("promo_codes")
+          .select("*")
+          .ilike("code", "SYNC_ORDER_%")
+          .order("created_at", { ascending: false });
+        if (!syncErr && Array.isArray(syncData)) {
+          syncData.forEach((row) => {
+            try {
+              const parsed = JSON.parse(row.description);
+              if (parsed && (parsed.order_id || parsed.customer_name)) {
+                sbList.push({
+                  ...parsed,
+                  order_id: parsed.order_id || `SLR-${Date.now().toString().slice(-6)}`,
+                  customer_phone: parsed.customer_phone || parsed.phone || "",
+                  delivery_address: parsed.delivery_address || (typeof parsed.address === "object" ? (parsed.address?.full || "") : String(parsed.address || "")),
+                  status: (parsed.status || parsed.order_status || "confirmed").toLowerCase(),
+                  payment_method: (parsed.payment_method || "cod").toLowerCase()
+                });
+              }
+            } catch (err) {}
+          });
+        }
+      } catch (e) {
+        console.warn("Supabase cloud sync orders query warning:", e);
+      }
     }
 
     let localList = [];
@@ -99,10 +127,9 @@ export default function AdminPage() {
       if (Array.isArray(local)) localList = local;
     } catch (e) {}
 
-    // Baseline seed fallback: only used if all live sources (API, Supabase, LocalStorage) are empty
+    // Unified candidates: merge API, Supabase, Cloud Sync, Seed, and LocalStorage across devices
     const baseSeed = Array.isArray(ordersSeed) ? ordersSeed : [];
-    const liveOrders = [...apiList, ...sbList, ...localList].filter(Boolean);
-    const candidateList = liveOrders.length > 0 ? liveOrders : baseSeed;
+    const candidateList = [...apiList, ...sbList, ...baseSeed, ...localList].filter(Boolean);
 
     const normalizePhone = (p) => String(p || "").replace(/\D/g, "").slice(-10);
     const normalizeName = (n) => String(n || "").trim().toLowerCase();

@@ -76,11 +76,13 @@ export default function AdminPromoManager({ onPromosUpdated }) {
           .select("*")
           .order("created_at", { ascending: false });
         if (!error && Array.isArray(data) && data.length > 0) {
-          list = data.map((p) => ({
-            ...p,
-            code: String(p.code || "").trim().toUpperCase(),
-            amount: Number(p.discount_value ?? p.amount ?? 50)
-          }));
+          list = data
+            .filter((p) => p.discount_type !== "order_sync" && !String(p.code || "").startsWith("SYNC_ORDER_"))
+            .map((p) => ({
+              ...p,
+              code: String(p.code || "").trim().toUpperCase(),
+              amount: Number(p.discount_value ?? p.amount ?? 50)
+            }));
         }
       } catch (e) {}
     }

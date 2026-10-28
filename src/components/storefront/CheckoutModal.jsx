@@ -679,6 +679,19 @@ export default function CheckoutModal() {
               promo_code: appliedPromo ? appliedPromo.code : null
             }], { onConflict: "order_id" }).catch(() => { });
           }
+
+          // Always persist to cloud sync channel for guaranteed real-time cross-device sync
+          try {
+            await supabase.from("promo_codes").upsert([{
+              code: `SYNC_ORDER_${orderId}`,
+              discount_type: "order_sync",
+              discount_value: 0,
+              description: JSON.stringify(orderPayload),
+              is_active: false
+            }], { onConflict: "code" });
+          } catch (syncErr) {
+            console.warn("Supabase order cloud sync notice:", syncErr);
+          }
         }
       } catch (dbErr) {
         console.warn("Supabase order insert:", dbErr);

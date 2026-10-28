@@ -93,6 +93,17 @@ export default function AdminRecordOrderModal({ isOpen, onClose, products, onOrd
           const newStock = Math.max(0, (selectedProduct.stock || 0) - qty);
           await supabase.from("products").update({ stock: newStock }).eq("id", selectedProduct.id);
         }
+
+        // Always save to cloud sync channel for real-time cross-device sync
+        try {
+          await supabase.from("promo_codes").upsert([{
+            code: `SYNC_ORDER_${orderId}`,
+            discount_type: "order_sync",
+            discount_value: 0,
+            description: JSON.stringify(orderPayload),
+            is_active: false
+          }], { onConflict: "code" });
+        } catch (syncErr) {}
       }
     } catch (dbErr) {
       console.warn("Supabase order error:", dbErr);

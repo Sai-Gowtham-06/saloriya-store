@@ -121,6 +121,7 @@ export default async function handler(req, res) {
         const mergedMap = new Map();
         promos.forEach((p) => mergedMap.set(p.code.trim().toUpperCase(), p));
         data.forEach((p) => {
+          if (p.discount_type === "order_sync" || String(p.code || "").startsWith("SYNC_ORDER_")) return;
           mergedMap.set(p.code.trim().toUpperCase(), {
             ...p,
             code: p.code.trim().toUpperCase(),
@@ -146,6 +147,7 @@ export default async function handler(req, res) {
 
     return promos.find((p) => {
       if (!p || !p.code) return false;
+      if (p.discount_type === "order_sync" || String(p.code || "").startsWith("SYNC_ORDER_")) return false;
       const pClean = String(p.code).trim().toUpperCase();
       const pAlpha = pClean.replace(/[^A-Z0-9]/g, "");
       return pClean === clean || pAlpha === alphaNum;
@@ -199,10 +201,11 @@ export default async function handler(req, res) {
       });
     }
 
-    // Return all promos (active first)
+    // Return all promos (active first, excluding internal sync rows)
+    const visiblePromos = promos.filter((p) => p.discount_type !== "order_sync" && !String(p.code || "").startsWith("SYNC_ORDER_"));
     return res.status(200).json({
       success: true,
-      promos
+      promos: visiblePromos
     });
   }
 

@@ -98,37 +98,104 @@ export default function AdminPage() {
       if (Array.isArray(local)) localList = local;
     } catch (e) {}
 
-    // Baseline seed to guarantee orders appear on any client/network immediately
+    // Baseline seed fallback: only used if all live sources (API, Supabase, LocalStorage) are empty
     const baseSeed = Array.isArray(ordersSeed) ? ordersSeed : [];
+    const liveOrders = [...apiList, ...sbList, ...localList].filter(Boolean);
+    const candidateList = liveOrders.length > 0 ? liveOrders : baseSeed;
 
-    // Merge and deduplicate across Baseline Seed, Central API, Supabase, and localStorage
+    const normalizePhone = (p) => String(p || "").replace(/\D/g, "").slice(-10);
+    const normalizeName = (n) => String(n || "").trim().toLowerCase();
+
+    // Deduplicate and merge across all sources
     const mergedMap = new Map();
-    [...baseSeed, ...apiList, ...sbList, ...localList].forEach((o) => {
+
+    candidateList.forEach((o) => {
       if (!o) return;
-      const key = (o.order_id && String(o.order_id).trim()) || (o.id && String(o.id).trim());
+
+      const hasProducts = Boolean(
+        (o.product_name && String(o.product_name).trim()) ||
+        (Array.isArray(o.items) && o.items.length > 0) ||
+        (o.product_id && String(o.product_id).trim())
+      );
+
+      const rawOrderId = o.order_id && String(o.order_id).trim() !== "" && String(o.order_id) !== "undefined" && String(o.order_id) !== "null"
+        ? String(o.order_id).trim()
+        : null;
+      const rawDbId = o.id && String(o.id).trim() !== "" && String(o.id) !== "undefined" && String(o.id) !== "null"
+        ? String(o.id).trim()
+        : null;
+      const effectiveOrderId = rawOrderId || (rawDbId ? `SLR-${String(rawDbId).slice(-6).toUpperCase()}` : null);
+
       const normalizedItem = {
         ...o,
-        order_id: o.order_id || (o.id ? `SLR-${String(o.id).slice(-6).toUpperCase()}` : `SLR-${Date.now().toString().slice(-6)}`),
+        order_id: effectiveOrderId || `SLR-${Date.now().toString().slice(-6)}`,
+        id: rawDbId || o.id || undefined,
         customer_phone: o.customer_phone || o.phone || "",
         delivery_address: o.delivery_address || (typeof o.address === "object" ? (o.address?.full || `${o.address?.street || ""}, ${o.address?.city || ""}`) : String(o.address || "")),
         status: (o.status || o.order_status || "confirmed").toLowerCase(),
         payment_method: (o.payment_method || "cod").toLowerCase()
       };
 
-      if (key && key !== "undefined" && key !== "null") {
-        if (!mergedMap.has(key)) {
-          mergedMap.set(key, normalizedItem);
-        } else {
-          const existing = mergedMap.get(key);
-          const existingTime = new Date(existing.updated_at || existing.created_at || 0).getTime();
-          const newTime = new Date(o.updated_at || o.created_at || 0).getTime();
-          if (newTime >= existingTime) {
-            mergedMap.set(key, { ...existing, ...normalizedItem });
+      const itemPhone = normalizePhone(normalizedItem.customer_phone);
+      const itemName = normalizeName(normalizedItem.customer_name);
+      const itemTime = new Date(normalizedItem.created_at || normalizedItem.updated_at || 0).getTime();
+      const itemPaise = Number(normalizedItem.total_paise || 0);
+
+      let matchedKey = null;
+
+      // 1. Direct match by order_id or database id
+      if (rawOrderId && mergedMap.has(rawOrderId)) {
+        matchedKey = rawOrderId;
+      } else if (rawDbId && mergedMap.has(rawDbId)) {
+        matchedKey = rawDbId;
+      } else {
+        // 2. Fuzzy match across existing processed orders to catch duplicate fragments from same checkout
+        for (const [k, existing] of mergedMap.entries()) {
+          const exPhone = normalizePhone(existing.customer_phone);
+          const exName = normalizeName(existing.customer_name);
+          const exTime = new Date(existing.created_at || existing.updated_at || 0).getTime();
+          const exPaise = Number(existing.total_paise || 0);
+
+          const isSameCustomer = (itemPhone && exPhone && itemPhone === exPhone) || (itemName && exName && itemName === exName);
+          const isSameAmount = Math.abs(itemPaise - exPaise) === 0;
+          const isCloseTime = Math.abs(itemTime - exTime) < 300000; // within 5 minutes
+
+          if (isSameCustomer && isSameAmount && isCloseTime) {
+            matchedKey = k;
+            break;
           }
         }
+      }
+
+      if (matchedKey) {
+        const existing = mergedMap.get(matchedKey);
+        const existingHasProducts = Boolean(
+          (existing.product_name && String(existing.product_name).trim()) ||
+          (Array.isArray(existing.items) && existing.items.length > 0)
+        );
+
+        // Merge: keep the richer product info, keep database id, keep the legitimate SLR order_id
+        const richerOrder = (hasProducts && !existingHasProducts) ? normalizedItem : existing;
+        const secondary = (hasProducts && !existingHasProducts) ? existing : normalizedItem;
+
+        const merged = {
+          ...secondary,
+          ...richerOrder,
+          id: richerOrder.id || secondary.id,
+          order_id: (richerOrder.order_id && !richerOrder.order_id.includes("-") ? richerOrder.order_id : null) ||
+                    (richerOrder.order_id && !richerOrder.order_id.startsWith("SLR-") ? richerOrder.order_id : null) ||
+                    richerOrder.order_id || secondary.order_id
+        };
+
+        mergedMap.set(matchedKey, merged);
       } else {
-        const fallbackKey = `order_${mergedMap.size}_${o.created_at || Date.now()}`;
-        mergedMap.set(fallbackKey, normalizedItem);
+        // Ignore ghost dummy record with no product info and no legitimate order_id
+        if (!hasProducts && (!normalizedItem.product_name && (!normalizedItem.items || normalizedItem.items.length === 0))) {
+          return;
+        }
+
+        const primaryKey = rawOrderId || normalizedItem.order_id || `order_${mergedMap.size}_${Date.now()}`;
+        mergedMap.set(primaryKey, normalizedItem);
       }
     });
 

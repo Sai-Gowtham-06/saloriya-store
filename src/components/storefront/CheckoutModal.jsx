@@ -618,9 +618,12 @@ export default function CheckoutModal() {
       try {
         if (isSupabaseConfigured) {
           const sbPayload = {
-            ...orderPayload,
-            phone: cleanCustomerPhone,
+            order_id: orderId,
+            customer_name: customerName.trim(),
+            customer_email: cleanEmail || null,
             customer_phone: cleanCustomerPhone,
+            phone: cleanCustomerPhone,
+            delivery_address: fullAddress,
             address: {
               street: street.trim(),
               city: city.trim(),
@@ -628,22 +631,53 @@ export default function CheckoutModal() {
               pincode: pincode.trim(),
               full: fullAddress
             },
+            product_id: isMultiItem ? "multi_item" : (product.id || product.slug || ""),
+            product_name: summaryProductName,
+            product_image: previewImgUrl || (activeItems[0] && activeItems[0].image) || "",
+            variant_colour: isMultiItem ? "Multiple" : initialColour,
+            quantity: totalOrderedQty,
+            subtotal_paise: subtotalPaise,
+            total_paise: totalPaise,
+            discount_paise: effectiveDiscountPaise,
+            payment_method: paymentMethod,
             payment_status: paymentMethod === "prepaid" ? "paid" : "pending",
-            order_status: "confirmed"
+            order_status: "confirmed",
+            status: "confirmed",
+            utr_number: utrNumber.trim() || null,
+            payment_screenshot: screenshotDataUrl || null,
+            promo_code: appliedPromo ? appliedPromo.code : null,
+            email_token: emailToken || null,
+            created_at: orderPayload.created_at,
+            updated_at: orderPayload.updated_at
           };
-          const { error: sbErr } = await supabase.from("orders").insert([sbPayload]);
+
+          const { error: sbErr } = await supabase
+            .from("orders")
+            .upsert([sbPayload], { onConflict: "order_id" });
+
           if (sbErr) {
-            await supabase.from("orders").insert([{
+            console.warn("Supabase primary order upsert notice:", sbErr);
+            // Safe fallback preserving order_id and product details to prevent dummy ghost orders
+            await supabase.from("orders").upsert([{
+              order_id: orderId,
               customer_name: orderPayload.customer_name,
+              customer_phone: cleanCustomerPhone,
               phone: cleanCustomerPhone,
-              address: { street: street.trim(), city: city.trim(), state: state.trim(), pincode: pincode.trim() },
+              delivery_address: fullAddress,
+              product_name: summaryProductName,
+              product_id: isMultiItem ? "multi_item" : (product.id || product.slug || ""),
+              product_image: previewImgUrl || (activeItems[0] && activeItems[0].image) || "",
+              variant_colour: isMultiItem ? "Multiple" : initialColour,
+              quantity: totalOrderedQty,
+              address: { street: street.trim(), city: city.trim(), state: state.trim(), pincode: pincode.trim(), full: fullAddress },
               payment_method: paymentMethod,
               payment_status: paymentMethod === "prepaid" ? "paid" : "pending",
               order_status: "confirmed",
+              status: "confirmed",
               total_paise: totalPaise,
               discount_paise: effectiveDiscountPaise,
               promo_code: appliedPromo ? appliedPromo.code : null
-            }]).catch(() => { });
+            }], { onConflict: "order_id" }).catch(() => { });
           }
         }
       } catch (dbErr) {

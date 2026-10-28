@@ -153,24 +153,28 @@ export default async function handler(req, res) {
             order_id: body.order_id,
             product_name: body.product_name,
             product_id: body.product_id,
+            product_image: body.product_image || "",
             variant_colour: body.variant_colour || "Standard",
             quantity: body.quantity || 1,
             unit_price_paise: body.unit_price_paise,
-            total_paise: body.total_paise,
-            payment_method: body.payment_method,
+            subtotal_paise: body.subtotal_paise || body.total_paise || 0,
+            total_paise: body.total_paise || 0,
+            discount_paise: body.discount_paise || 0,
+            payment_method: body.payment_method || "cod",
+            payment_status: body.payment_method === "prepaid" ? "paid" : "pending",
             customer_name: body.customer_name,
-            customer_phone: body.customer_phone,
+            customer_phone: body.customer_phone || body.phone || "",
+            phone: body.customer_phone || body.phone || "",
             customer_email: body.customer_email || null,
-            delivery_address: body.delivery_address,
-            delivery_city: body.delivery_city,
-            delivery_state: body.delivery_state,
-            delivery_pincode: body.delivery_pincode,
-            notes: body.notes || "",
-            status: body.status || "confirmed",
-            order_status: body.status || "confirmed",
-            payment_screenshot_url: body.payment_screenshot_url || null,
-            items: body.items || null,
-            created_at: body.created_at || new Date().toISOString()
+            delivery_address: typeof body.delivery_address === "string" ? body.delivery_address : (body.address?.full || ""),
+            address: typeof body.address === "object" ? body.address : { full: body.delivery_address || "" },
+            status: body.status || body.order_status || "confirmed",
+            order_status: body.status || body.order_status || "confirmed",
+            payment_screenshot: body.payment_screenshot || body.payment_screenshot_url || null,
+            promo_code: body.promo_code || null,
+            email_token: body.email_token || null,
+            created_at: body.created_at || new Date().toISOString(),
+            updated_at: body.updated_at || new Date().toISOString()
           };
 
           const sbRes = await fetch(`${SUPABASE_URL}/rest/v1/orders`, {
@@ -185,14 +189,20 @@ export default async function handler(req, res) {
           });
 
           if (!sbRes.ok) {
-            // Fallback for legacy columns schema
+            // Fallback for legacy columns schema: ALWAYS preserve order_id, customer, and product name
             const fallbackPayload = {
+              order_id: body.order_id,
               customer_name: body.customer_name,
               phone: body.customer_phone || body.phone,
+              customer_phone: body.customer_phone || body.phone,
+              product_name: body.product_name,
+              product_id: body.product_id,
+              delivery_address: typeof body.delivery_address === "string" ? body.delivery_address : (body.address?.full || ""),
               address: typeof body.delivery_address === "string" ? { full: body.delivery_address } : (body.address || { full: "" }),
               payment_method: body.payment_method || "cod",
               payment_status: body.payment_method === "prepaid" ? "paid" : "pending",
               order_status: body.status || "confirmed",
+              status: body.status || "confirmed",
               total_paise: body.total_paise || 0,
               discount_paise: body.discount_paise || 0,
               promo_code: body.promo_code || null
@@ -202,7 +212,8 @@ export default async function handler(req, res) {
               headers: {
                 apikey: SUPABASE_KEY,
                 Authorization: `Bearer ${SUPABASE_KEY}`,
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                Prefer: "resolution=merge-duplicates"
               },
               body: JSON.stringify(fallbackPayload)
             });

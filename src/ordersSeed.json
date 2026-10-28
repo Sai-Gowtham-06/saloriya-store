@@ -1,5 +1,49 @@
 [
   {
+    "order_id": "SLR-188788",
+    "customer_name": "mia",
+    "customer_email": "saigowtham00007@gmail.com",
+    "customer_phone": "8610369441",
+    "email_token": "emv_1793194187181_df266f616f95dcb6c294079b5132cfd7",
+    "delivery_address": "huiknk, Chennai, Tamil Nadu - 600001",
+    "product_id": "multi_item",
+    "product_name": "Royal Lotus Antique Gold Chandbali Earrings (BLUE ×1), Antique Silver Stone Jhumka Earrings (PINK ×1)",
+    "product_image": "https://ybyboplrrovrhnnunkaa.supabase.co/storage/v1/object/public/product-images/8c3848d9-ebe8-40ea-9181-d67ce5ee5b24-Ornate-Blue-Lotus-Chandbali-Earrings-1.png",
+    "variant_colour": "Multiple",
+    "quantity": 2,
+    "items": [
+      {
+        "product_id": "f6ebe650-629a-4a3f-bf6c-ff07e1c0a53a",
+        "product_name": "Royal Lotus Antique Gold Chandbali Earrings",
+        "variant_colour": "BLUE",
+        "quantity": 1,
+        "unit_price_paise": 10500,
+        "subtotal_paise": 10500,
+        "product_image": "https://ybyboplrrovrhnnunkaa.supabase.co/storage/v1/object/public/product-images/8c3848d9-ebe8-40ea-9181-d67ce5ee5b24-Ornate-Blue-Lotus-Chandbali-Earrings-1.png"
+      },
+      {
+        "product_id": "f2fe3613-d155-4dab-a11c-48aecac70369",
+        "product_name": "Antique Silver Stone Jhumka Earrings",
+        "variant_colour": "PINK",
+        "quantity": 1,
+        "unit_price_paise": 12900,
+        "subtotal_paise": 12900,
+        "product_image": "https://ybyboplrrovrhnnunkaa.supabase.co/storage/v1/object/public/product-images/f5ed7b67-7267-4366-a45e-784afe4d0848-Romantic-Pink-Jhumka-Earrings-in-Satin-Box.png"
+      }
+    ],
+    "subtotal_paise": 23400,
+    "total_paise": 28400,
+    "discount_paise": 0,
+    "payment_method": "cod",
+    "utr_number": null,
+    "payment_screenshot": null,
+    "promo_code": null,
+    "status": "confirmed",
+    "order_status": "confirmed",
+    "created_at": "2026-10-28T13:29:48.789Z",
+    "updated_at": "2026-10-28T13:29:48.789Z"
+  },
+  {
     "order_id": "SLR-759139",
     "customer_name": "kisa",
     "customer_email": "saigowtham00007@gmail.com",
@@ -86,28 +130,5 @@
     "order_status": "confirmed",
     "created_at": "2026-10-27T19:50:08.929Z",
     "updated_at": "2026-10-27T19:53:03.201Z"
-  },
-  {
-    "order_id": "SLR-474480",
-    "customer_name": "hvhv",
-    "customer_email": "saigowtham00007@gmail.com",
-    "customer_phone": "8122291690",
-    "email_token": "emv_1793019462118_62e1f775645b5fc7923675e68e811767",
-    "delivery_address": "ugkgkmug, Chennai, Tamil Nadu - 600001",
-    "product_id": "74126991-7775-4b06-9a6f-9c09788dcfbd",
-    "product_name": "Antique Gold Ruby Emerald Pearl Jhumka Earrings",
-    "product_image": "https://ybyboplrrovrhnnunkaa.supabase.co/storage/v1/object/public/product-images/0d6e2270-60e1-4aec-af1f-fe3954b235bd-Ornate-Ruby-and-Emerald-Jhumka-Earrings.png",
-    "variant_colour": "Standard",
-    "quantity": 1,
-    "subtotal_paise": 15900,
-    "total_paise": 15900,
-    "discount_paise": 5000,
-    "payment_method": "cod",
-    "utr_number": null,
-    "payment_screenshot": null,
-    "promo_code": "COLLEGE",
-    "status": "pending",
-    "created_at": "2026-10-26T12:57:54.480Z",
-    "updated_at": "2026-10-26T13:39:37.030Z"
   }
 ]

@@ -6824,6 +6824,43 @@ body.modal-open {
   }
 }
 
+/* Admin Order Preview Modal & Delivered Section Scoped Styles */
+.admin-order-modal .product-modal-dialog {
+  max-width: 1040px;
+  border-radius: 8px;
+}
+
+/* Delivered Orders Separate Section */
+.delivered-orders-section {
+  margin-top: 36px;
+  padding-top: 24px;
+  border-top: 2px dashed #86efac;
+}
+
+.delivered-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px 18px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  border-radius: 10px;
+}
+
+.order-card.order-card-delivered {
+  border-color: #86efac;
+  background: #fcfffc;
+}
+
+.order-card.order-card-delivered .order-card-header {
+  background: #f0fdf4;
+  border-bottom-color: #bbf7d0;
+}
+
+
 
 
 

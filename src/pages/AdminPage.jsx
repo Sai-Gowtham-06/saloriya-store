@@ -30,6 +30,7 @@ export default function AdminPage() {
   });
   const [editingProduct, setEditingProduct] = useState(null);
   const [showRecordModal, setShowRecordModal] = useState(false);
+  const [openAddProductTrigger, setOpenAddProductTrigger] = useState(0);
   const [promosCount, setPromosCount] = useState(() => {
     try {
       const deleted = JSON.parse(localStorage.getItem("saloriya_deleted_promo_codes") || "[]");
@@ -299,8 +300,6 @@ export default function AdminPage() {
       </div>
     );
   }
-
-  const [openAddProductTrigger, setOpenAddProductTrigger] = useState(0);
 
   const pendingOrdersCount = orders.filter((o) => (o.status || o.order_status || "").toLowerCase() === "pending").length;
 

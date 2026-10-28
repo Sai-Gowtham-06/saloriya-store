@@ -92,7 +92,13 @@ export default async function handler(req, res) {
   const pathParts = url.split("?")[0].split("/").filter(Boolean);
 
   let idFromPath = null;
-  if (pathParts.length >= 3 && pathParts[1] === "orders") {
+  const ordersIdx = pathParts.indexOf("orders");
+  if (ordersIdx !== -1 && pathParts.length > ordersIdx + 1) {
+    const nextPart = pathParts[ordersIdx + 1];
+    if (nextPart !== "status") {
+      idFromPath = nextPart;
+    }
+  } else if (pathParts.length >= 3 && pathParts[1] === "orders") {
     idFromPath = pathParts[2];
   }
 
@@ -229,7 +235,7 @@ export default async function handler(req, res) {
     // 3. PUT /api/orders/:id/status or PUT /api/orders (Status update)
     if (req.method === "PUT") {
       const targetId = idFromPath || id || req.body?.id || req.body?.order_id;
-      const status = req.body?.status;
+      const status = req.body?.status || req.body?.order_status;
       if (!targetId || !status) {
         return res.status(400).json({ success: false, error: "Missing order ID or status" });
       }
@@ -238,6 +244,7 @@ export default async function handler(req, res) {
       const idx = orders.findIndex((o) => o.order_id === targetId || o.id === targetId);
       if (idx !== -1) {
         orders[idx].status = status;
+        orders[idx].order_status = status;
         orders[idx].updated_at = new Date().toISOString();
         writeOrders(orders);
       }

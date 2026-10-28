@@ -191,14 +191,18 @@ app.post("/api/orders", (req, res) => {
   res.json({ success: true, order: orderData, ordersCount: orders.length });
 });
 
-app.put("/api/orders/:id/status", (req, res) => {
+app.put(["/api/orders/:id/status", "/api/orders/:id"], (req, res) => {
   const { id } = req.params;
-  const { status } = req.body;
+  const status = req.body?.status || req.body?.order_status;
+  if (!status) {
+    return res.status(400).json({ success: false, error: "Missing status in request body" });
+  }
   const orders = readOrdersFromFile();
   const idx = orders.findIndex((o) => o.order_id === id || o.id === id);
 
   if (idx !== -1) {
     orders[idx].status = status;
+    orders[idx].order_status = status;
     orders[idx].updated_at = new Date().toISOString();
     writeOrdersToFile(orders);
     return res.json({ success: true, order: orders[idx] });

@@ -126,7 +126,21 @@ app.put("/api/products/:id/stock", (req, res) => {
         0
       );
     } else if (stock !== undefined) {
-      products[idx].stock = Math.max(0, parseInt(stock, 10) || 0);
+      const cleanStock = Math.max(0, parseInt(stock, 10) || 0);
+      products[idx].stock = cleanStock;
+      const colours = Array.isArray(products[idx].colours) ? products[idx].colours.filter(Boolean) : [];
+      if (colours.length > 0) {
+        const count = colours.length;
+        const base = Math.floor(cleanStock / count);
+        const rem = cleanStock % count;
+        const dist = {};
+        colours.forEach((c, i) => {
+          dist[c] = base + (i < rem ? 1 : 0);
+        });
+        products[idx].colour_stocks = dist;
+      } else {
+        products[idx].colour_stocks = { Standard: cleanStock };
+      }
     }
     products[idx].updated_at = new Date().toISOString();
     writeProductsToFile(products);

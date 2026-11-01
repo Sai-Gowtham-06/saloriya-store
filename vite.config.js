@@ -119,7 +119,21 @@ function vercelApiDevPlugin() {
                 const total = Object.values(products[idx].colour_stocks).reduce((sum, v) => sum + Math.max(0, parseInt(v, 10) || 0), 0);
                 products[idx].stock = total;
               } else if (body.stock !== undefined) {
-                products[idx].stock = Math.max(0, parseInt(body.stock, 10) || 0);
+                const cleanStock = Math.max(0, parseInt(body.stock, 10) || 0);
+                products[idx].stock = cleanStock;
+                const colours = Array.isArray(products[idx].colours) ? products[idx].colours.filter(Boolean) : [];
+                if (colours.length > 0) {
+                  const count = colours.length;
+                  const base = Math.floor(cleanStock / count);
+                  const rem = cleanStock % count;
+                  const dist = {};
+                  colours.forEach((c, i) => {
+                    dist[c] = base + (i < rem ? 1 : 0);
+                  });
+                  products[idx].colour_stocks = dist;
+                } else {
+                  products[idx].colour_stocks = { Standard: cleanStock };
+                }
               }
               products[idx].updated_at = new Date().toISOString();
               writeProducts(products);

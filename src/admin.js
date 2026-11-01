@@ -1910,9 +1910,28 @@ stockTableWrap?.addEventListener("click", async e => {
   }
 
   btn.textContent = "…";
+  const foundProd = (productsList || []).find(p => p.id === productId);
+  const cols = Array.isArray(foundProd?.colours) ? foundProd.colours.filter(Boolean) : [];
+  let updatePayload = { stock: newStock, updated_at: new Date().toISOString() };
+  if (cols.length > 0) {
+    const count = cols.length;
+    const base = Math.floor(newStock / count);
+    const rem = newStock % count;
+    const dist = {};
+    cols.forEach((c, idx) => { dist[c] = base + (idx < rem ? 1 : 0); });
+    updatePayload.colour_stocks = dist;
+  }
+  try {
+    await fetch(`/api/products/${productId}/stock`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updatePayload)
+    });
+  } catch (e) {}
+
   const { error } = await supabase
     .from("products")
-    .update({ stock: newStock, updated_at: new Date().toISOString() })
+    .update(updatePayload)
     .eq("id", productId);
 
   if (error) {

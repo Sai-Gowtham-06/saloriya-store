@@ -157,6 +157,19 @@ export default async function handler(req, res) {
           products[idx].stock = calculatedStock;
         } else {
           products[idx].stock = calculatedStock;
+          const colours = Array.isArray(products[idx].colours) ? products[idx].colours.filter(Boolean) : [];
+          if (colours.length > 0) {
+            const count = colours.length;
+            const base = Math.floor(calculatedStock / count);
+            const rem = calculatedStock % count;
+            const dist = {};
+            colours.forEach((c, i) => {
+              dist[c] = base + (i < rem ? 1 : 0);
+            });
+            products[idx].colour_stocks = dist;
+          } else {
+            products[idx].colour_stocks = { Standard: calculatedStock };
+          }
         }
         products[idx].updated_at = new Date().toISOString();
         writeProducts(products);

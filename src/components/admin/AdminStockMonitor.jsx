@@ -14,6 +14,8 @@ export default function AdminStockMonitor({ products, onProductChanged, onEditIn
   const [refreshToast, setRefreshToast] = useState("");
   const [deleteTargetProduct, setDeleteTargetProduct] = useState(null);
   const [isDeletingProduct, setIsDeletingProduct] = useState(false);
+  const [stockInputs, setStockInputs] = useState({});
+  const [savingStockIds, setSavingStockIds] = useState({});
 
   const formatMoney = (paise) => {
     return new Intl.NumberFormat("en-IN", {
@@ -23,8 +25,50 @@ export default function AdminStockMonitor({ products, onProductChanged, onEditIn
     }).format((paise || 0) / 100);
   };
 
+  const getInputValue = (prodId, fallbackStock) => {
+    return stockInputs[prodId] !== undefined ? stockInputs[prodId] : (fallbackStock || 0);
+  };
+
+  const handleInputChange = (prodId, val) => {
+    setStockInputs((prev) => ({ ...prev, [prodId]: val }));
+  };
+
+  const handleSaveStock = async (prodId, fallbackStock) => {
+    const val = getInputValue(prodId, fallbackStock);
+    const num = Math.max(0, parseInt(val, 10) || 0);
+    setSavingStockIds((prev) => ({ ...prev, [prodId]: true }));
+    try {
+      await updateProductStock(prodId, num);
+      setRefreshToast("✓ Stock updated");
+      setTimeout(() => setRefreshToast(""), 2500);
+      if (onProductChanged) onProductChanged();
+    } finally {
+      setTimeout(() => {
+        setSavingStockIds((prev) => ({ ...prev, [prodId]: false }));
+      }, 800);
+    }
+  };
+
+  const handleQuickAddAllColours = async (product, addCount = 5) => {
+    const prodId = product.id || product.slug;
+    const colours = Array.isArray(product.colours) ? product.colours : [];
+    if (!colours.length) {
+      await updateProductStock(prodId, (product.stock || 0) + addCount);
+    } else {
+      const currentCStocks = {};
+      colours.forEach((c) => {
+        currentCStocks[c] = getColourStock(product, c) + addCount;
+      });
+      await updateProductStock(prodId, 0, currentCStocks);
+    }
+    setRefreshToast(`✓ +${addCount} added to all colours for "${product.name}"`);
+    setTimeout(() => setRefreshToast(""), 3000);
+    if (onProductChanged) onProductChanged();
+  };
+
   const handleStockUpdate = async (productId, currentStock, delta) => {
     const newStock = Math.max(0, currentStock + delta);
+    setStockInputs((prev) => ({ ...prev, [productId]: newStock }));
     await updateProductStock(productId, newStock);
     if (onProductChanged) onProductChanged();
   };
@@ -230,75 +274,120 @@ export default function AdminStockMonitor({ products, onProductChanged, onEditIn
                         </span>
                       </td>
                       <td>
-                        {Array.isArray(p.colours) && p.colours.length > 1 ? (
-                          <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-                            {p.colours.map((c) => {
-                              const cStock = getColourStock(p, c);
-                              return (
-                                <div
-                                  key={c}
-                                  style={{
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "space-between",
-                                    gap: "6px",
-                                    background: "#fcf8f5",
-                                    padding: "2px 6px",
-                                    borderRadius: "4px",
-                                    border: "1px solid var(--line)"
-                                  }}
-                                >
-                                  <span style={{ fontSize: "10.5px", fontWeight: 700, minWidth: "48px" }}>{c}:</span>
-                                  <div style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                                    <button
-                                      type="button"
-                                      className="button button-outline button-small"
-                                      style={{ padding: "1px 6px", minHeight: "22px", fontSize: "12px", lineHeight: "1" }}
-                                      onClick={() => handleColourStockUpdate(p.id, c, cStock, -1)}
-                                      title={`Decrease ${c} stock`}
-                                    >
-                                      −
-                                    </button>
-                                    <strong style={{ minWidth: "18px", textAlign: "center", fontSize: "11.5px", color: cStock <= 0 ? "#dc2626" : "inherit" }}>
-                                      {cStock}
-                                    </strong>
-                                    <button
-                                      type="button"
-                                      className="button button-outline button-small"
-                                      style={{ padding: "1px 6px", minHeight: "22px", fontSize: "12px", lineHeight: "1" }}
-                                      onClick={() => handleColourStockUpdate(p.id, c, cStock, 1)}
-                                      title={`Increase ${c} stock`}
-                                    >
-                                      +
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "#fcf8f5", padding: "4px 8px", borderRadius: "6px", border: "1px solid var(--line)" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                          {/* Quick Restock Input Row with Steppers and Save button */}
+                          <div className="quick-restock-cell">
                             <button
                               type="button"
                               className="button button-outline button-small"
-                              style={{ padding: "2px 10px", minHeight: "28px", fontSize: "14px", fontWeight: "bold" }}
+                              style={{ padding: "2px 7px", minHeight: "26px", fontSize: "13px", lineHeight: "1" }}
                               onClick={() => handleStockUpdate(p.id, p.stock || 0, -1)}
-                              title="Decrease Stock"
+                              title="Decrease overall stock"
                             >
                               −
                             </button>
-                            <strong style={{ minWidth: "26px", textAlign: "center", fontSize: "13px" }}>{p.stock || 0}</strong>
+                            <input
+                              type="number"
+                              className="quick-restock-input"
+                              min="0"
+                              step="1"
+                              value={getInputValue(p.id, p.stock)}
+                              onChange={(e) => handleInputChange(p.id, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  handleSaveStock(p.id, p.stock);
+                                }
+                              }}
+                              data-restock-input={p.id}
+                              title="Directly enter stock number and click Save"
+                            />
                             <button
                               type="button"
                               className="button button-outline button-small"
-                              style={{ padding: "2px 10px", minHeight: "28px", fontSize: "14px", fontWeight: "bold" }}
+                              style={{ padding: "2px 7px", minHeight: "26px", fontSize: "13px", lineHeight: "1" }}
                               onClick={() => handleStockUpdate(p.id, p.stock || 0, 1)}
-                              title="Increase Stock"
+                              title="Increase overall stock"
                             >
                               +
                             </button>
+                            <button
+                              type="button"
+                              className="quick-restock-btn"
+                              data-restock-btn={p.id}
+                              onClick={() => handleSaveStock(p.id, p.stock)}
+                              title="Save new stock quantity"
+                              style={{
+                                background: savingStockIds[p.id] ? "#15803d" : "var(--wine)",
+                                transition: "background 0.2s ease"
+                              }}
+                            >
+                              {savingStockIds[p.id] ? "Saved ✓" : "Save"}
+                            </button>
                           </div>
-                        )}
+
+                          {/* If multi-colour product, render individual colour variant steppers and quick +5 All button */}
+                          {Array.isArray(p.colours) && p.colours.length > 1 && (
+                            <div style={{ marginTop: "4px", display: "flex", flexDirection: "column", gap: "4px" }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <span style={{ fontSize: "10px", color: "var(--muted)", fontWeight: 700 }}>
+                                  Variants ({p.colours.length}):
+                                </span>
+                                <button
+                                  type="button"
+                                  className="button button-outline button-small"
+                                  style={{ padding: "1px 6px", fontSize: "10px", lineHeight: "1.2", height: "20px" }}
+                                  onClick={() => handleQuickAddAllColours(p, 5)}
+                                  title="Add +5 to all colour variants"
+                                >
+                                  +5 All
+                                </button>
+                              </div>
+                              {p.colours.map((c) => {
+                                const cStock = getColourStock(p, c);
+                                return (
+                                  <div
+                                    key={c}
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "space-between",
+                                      gap: "6px",
+                                      background: "#fcf8f5",
+                                      padding: "2px 6px",
+                                      borderRadius: "4px",
+                                      border: "1px solid var(--line)"
+                                    }}
+                                  >
+                                    <span style={{ fontSize: "10.5px", fontWeight: 700, minWidth: "46px" }}>{c}:</span>
+                                    <div style={{ display: "inline-flex", alignItems: "center", gap: "4px" }}>
+                                      <button
+                                        type="button"
+                                        className="button button-outline button-small"
+                                        style={{ padding: "1px 6px", minHeight: "22px", fontSize: "12px", lineHeight: "1" }}
+                                        onClick={() => handleColourStockUpdate(p.id, c, cStock, -1)}
+                                        title={`Decrease ${c} stock`}
+                                      >
+                                        −
+                                      </button>
+                                      <strong style={{ minWidth: "18px", textAlign: "center", fontSize: "11.5px", color: cStock <= 0 ? "#dc2626" : "inherit" }}>
+                                        {cStock}
+                                      </strong>
+                                      <button
+                                        type="button"
+                                        className="button button-outline button-small"
+                                        style={{ padding: "1px 6px", minHeight: "22px", fontSize: "12px", lineHeight: "1" }}
+                                        onClick={() => handleColourStockUpdate(p.id, c, cStock, 1)}
+                                        title={`Increase ${c} stock`}
+                                      >
+                                        +
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
                       </td>
                       <td>
                         <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>

@@ -160,24 +160,95 @@ export function StoreProvider({ children }) {
   // Action: Update Stock (Overall or per-colour stocks map)
   const updateProductStock = async (productId, newStock, colourStocks = null) => {
     const cleanStock = Math.max(0, parseInt(newStock, 10) || 0);
-    const target = products.find((p) => p.id === productId || p.slug === productId);
+    const target = products.find((p) => p.id === productId || p.slug === productId || String(p.id) === String(productId));
     const id = target?.id || productId;
     const slug = target?.slug;
 
     let finalColourStocks = colourStocks;
     let finalStock = cleanStock;
 
+    const colours = Array.isArray(target?.colours) ? target.colours.filter((c) => c && c.trim()) : [];
+
     if (colourStocks && typeof colourStocks === "object") {
       finalColourStocks = { ...colourStocks };
       finalStock = Object.values(finalColourStocks).reduce((sum, v) => sum + (Math.max(0, parseInt(v, 10) || 0)), 0);
-    } else if (target && Array.isArray(target.colours) && target.colours.length === 1) {
-      finalColourStocks = { [target.colours[0]]: cleanStock };
+    } else if (colours.length > 0) {
+      if (colours.length === 1) {
+        finalColourStocks = { [colours[0]]: cleanStock };
+        finalStock = cleanStock;
+      } else {
+        // Multi-colour distribution:
+        // Ensure every colour variant gets properly allocated stock so none are left stuck at 0
+        const curStocks = {};
+        colours.forEach((c) => {
+          curStocks[c] = getColourStock(target, c);
+        });
+        const curTotal = Object.values(curStocks).reduce((sum, v) => sum + v, 0);
+
+        if (cleanStock === 0) {
+          finalColourStocks = {};
+          colours.forEach((c) => {
+            finalColourStocks[c] = 0;
+          });
+          finalStock = 0;
+        } else if (curTotal === 0) {
+          // Previously all 0: distribute evenly across variants
+          const count = colours.length;
+          const base = Math.floor(cleanStock / count);
+          const rem = cleanStock % count;
+          finalColourStocks = {};
+          colours.forEach((c, idx) => {
+            finalColourStocks[c] = base + (idx < rem ? 1 : 0);
+          });
+          finalStock = cleanStock;
+        } else if (cleanStock > curTotal) {
+          // Stock increased: distribute extra units to out-of-stock variants first
+          let delta = cleanStock - curTotal;
+          finalColourStocks = { ...curStocks };
+          // Allocate to 0-stock colour variants first so all get restocked
+          for (const c of colours) {
+            if (delta > 0 && (finalColourStocks[c] || 0) <= 0) {
+              finalColourStocks[c] = (finalColourStocks[c] || 0) + 1;
+              delta--;
+            }
+          }
+          // Distribute remainder evenly
+          while (delta > 0) {
+            for (const c of colours) {
+              if (delta > 0) {
+                finalColourStocks[c] = (finalColourStocks[c] || 0) + 1;
+                delta--;
+              }
+            }
+          }
+          finalStock = cleanStock;
+        } else {
+          // Stock decreased: scale down from largest stock
+          let delta = curTotal - cleanStock;
+          finalColourStocks = { ...curStocks };
+          while (delta > 0) {
+            let maxCol = colours[0];
+            for (const c of colours) {
+              if ((finalColourStocks[c] || 0) > (finalColourStocks[maxCol] || 0)) {
+                maxCol = c;
+              }
+            }
+            if ((finalColourStocks[maxCol] || 0) <= 0) break;
+            finalColourStocks[maxCol]--;
+            delta--;
+          }
+          finalStock = cleanStock;
+        }
+      }
+    } else {
+      finalColourStocks = { Standard: cleanStock };
+      finalStock = cleanStock;
     }
 
     // 1. Immediate UI update
     setProducts((prev) =>
       prev.map((p) =>
-        p.id === id || (slug && p.slug === slug)
+        p.id === id || (slug && p.slug === slug) || String(p.id) === String(id)
           ? {
               ...p,
               stock: finalStock,
@@ -191,7 +262,7 @@ export function StoreProvider({ children }) {
     // 2. LocalStorage sync
     try {
       const local = JSON.parse(localStorage.getItem("saloriya_admin_products") || "[]");
-      const idx = local.findIndex((p) => p.id === id || (slug && p.slug === slug));
+      const idx = local.findIndex((p) => p.id === id || (slug && p.slug === slug) || String(p.id) === String(id));
       if (idx !== -1) {
         local[idx].stock = finalStock;
         if (finalColourStocks) local[idx].colour_stocks = finalColourStocks;
@@ -234,16 +305,24 @@ export function StoreProvider({ children }) {
   // Action: Update individual colour stock for a product
   const updateProductColourStock = async (productId, colourName, newStock) => {
     const cleanStock = Math.max(0, parseInt(newStock, 10) || 0);
-    const target = products.find((p) => p.id === productId || p.slug === productId);
+    const target = products.find((p) => p.id === productId || p.slug === productId || String(p.id) === String(productId));
     const id = target?.id || productId;
     const slug = target?.slug;
-    const colourKey = (colourName || "").trim();
+    const cleanColour = (colourName || "").trim();
 
+    const colours = Array.isArray(target?.colours) ? target.colours.filter((c) => c && c.trim()) : [];
     let updatedColourStocks = {};
     if (target && target.colour_stocks && typeof target.colour_stocks === "object") {
       updatedColourStocks = { ...target.colour_stocks };
     }
-    updatedColourStocks[colourKey] = cleanStock;
+    colours.forEach((c) => {
+      if (updatedColourStocks[c] === undefined) {
+        updatedColourStocks[c] = getColourStock(target, c);
+      }
+    });
+
+    const matchedKey = colours.find((c) => c.trim().toLowerCase() === cleanColour.toLowerCase()) || cleanColour;
+    updatedColourStocks[matchedKey] = cleanStock;
 
     // Recalculate total stock
     const newTotalStock = Object.values(updatedColourStocks).reduce(
@@ -254,13 +333,11 @@ export function StoreProvider({ children }) {
     // 1. Immediate UI update
     setProducts((prev) =>
       prev.map((p) => {
-        if (p.id === id || (slug && p.slug === slug)) {
-          const cStocks = { ...(p.colour_stocks || {}), [colourKey]: cleanStock };
-          const tot = Object.values(cStocks).reduce((sum, v) => sum + (Math.max(0, parseInt(v, 10) || 0)), 0);
+        if (p.id === id || (slug && p.slug === slug) || String(p.id) === String(id)) {
           return {
             ...p,
-            colour_stocks: cStocks,
-            stock: tot,
+            colour_stocks: updatedColourStocks,
+            stock: newTotalStock,
             updated_at: new Date().toISOString()
           };
         }
@@ -271,13 +348,10 @@ export function StoreProvider({ children }) {
     // 2. LocalStorage sync
     try {
       const local = JSON.parse(localStorage.getItem("saloriya_admin_products") || "[]");
-      const idx = local.findIndex((p) => p.id === id || (slug && p.slug === slug));
+      const idx = local.findIndex((p) => p.id === id || (slug && p.slug === slug) || String(p.id) === String(id));
       if (idx !== -1) {
-        local[idx].colour_stocks = { ...(local[idx].colour_stocks || {}), [colourKey]: cleanStock };
-        local[idx].stock = Object.values(local[idx].colour_stocks).reduce(
-          (sum, v) => sum + (Math.max(0, parseInt(v, 10) || 0)),
-          0
-        );
+        local[idx].colour_stocks = updatedColourStocks;
+        local[idx].stock = newTotalStock;
       } else if (target) {
         local.push({ ...target, colour_stocks: updatedColourStocks, stock: newTotalStock });
       }
@@ -292,7 +366,7 @@ export function StoreProvider({ children }) {
         body: JSON.stringify({
           stock: newTotalStock,
           colour_stocks: updatedColourStocks,
-          colour: colourKey,
+          colour: matchedKey,
           colourStock: cleanStock
         })
       });
@@ -316,7 +390,7 @@ export function StoreProvider({ children }) {
   // Action: Deduct product stock when an order is placed
   const deductProductStock = async (productId, colourName, quantity = 1) => {
     const qty = Math.max(1, parseInt(quantity, 10) || 1);
-    const target = products.find((p) => p.id === productId || p.slug === productId);
+    const target = products.find((p) => p.id === productId || p.slug === productId || String(p.id) === String(productId));
     if (!target) return;
     const id = target.id || productId;
     const slug = target.slug;
@@ -349,7 +423,7 @@ export function StoreProvider({ children }) {
     // 1. Immediate UI update
     setProducts((prev) =>
       prev.map((p) => {
-        if (p.id === id || (slug && p.slug === slug)) {
+        if (p.id === id || (slug && p.slug === slug) || String(p.id) === String(id)) {
           return {
             ...p,
             colour_stocks: Object.keys(updatedColourStocks).length > 0 ? updatedColourStocks : p.colour_stocks,
@@ -364,7 +438,7 @@ export function StoreProvider({ children }) {
     // 2. LocalStorage sync
     try {
       const local = JSON.parse(localStorage.getItem("saloriya_admin_products") || "[]");
-      const idx = local.findIndex((p) => p.id === id || (slug && p.slug === slug));
+      const idx = local.findIndex((p) => p.id === id || (slug && p.slug === slug) || String(p.id) === String(id));
       if (idx !== -1) {
         if (Object.keys(updatedColourStocks).length > 0) {
           local[idx].colour_stocks = updatedColourStocks;
@@ -384,6 +458,106 @@ export function StoreProvider({ children }) {
           colour_stocks: updatedColourStocks,
           colour: cleanColour,
           deductedQty: qty
+        })
+      });
+    } catch (e) {}
+
+    // 4. Supabase sync
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from("products").update({
+          stock: newTotalStock,
+          colour_stocks: updatedColourStocks
+        }).eq("id", id);
+      } catch (e) {
+        try {
+          await supabase.from("products").update({ stock: newTotalStock }).eq("id", id);
+        } catch (e2) {}
+      }
+    }
+  };
+
+  // Action: Restore product stock when an order is cancelled
+  const restoreProductStock = async (productId, colourName, quantity = 1) => {
+    const qty = Math.max(1, parseInt(quantity, 10) || 1);
+    const target = products.find((p) => p.id === productId || p.slug === productId || String(p.id) === String(productId));
+    if (!target) return;
+    const id = target.id || productId;
+    const slug = target.slug;
+    const cleanColour = (colourName || "Standard").trim();
+
+    const colours = Array.isArray(target.colours) ? target.colours.filter((c) => c && c.trim()) : [];
+    let updatedColourStocks = { ...(target.colour_stocks || {}) };
+    colours.forEach((c) => {
+      if (updatedColourStocks[c] === undefined) {
+        updatedColourStocks[c] = getColourStock(target, c);
+      }
+    });
+
+    const matchedKey = Object.keys(updatedColourStocks).find(
+      (k) => k.trim().toLowerCase() === cleanColour.toLowerCase()
+    );
+
+    let newTotalStock = target.stock || 0;
+
+    if (matchedKey) {
+      const cur = Math.max(0, parseInt(updatedColourStocks[matchedKey], 10) || 0);
+      updatedColourStocks[matchedKey] = cur + qty;
+      newTotalStock = Object.values(updatedColourStocks).reduce(
+        (sum, v) => sum + (Math.max(0, parseInt(v, 10) || 0)),
+        0
+      );
+    } else if (colours.length > 0) {
+      const foundColour = colours.find((c) => c.trim().toLowerCase() === cleanColour.toLowerCase()) || colours[0];
+      const cur = Math.max(0, parseInt(updatedColourStocks[foundColour] || target.stock, 10) || 0);
+      updatedColourStocks[foundColour] = cur + qty;
+      newTotalStock = Object.values(updatedColourStocks).reduce(
+        (sum, v) => sum + (Math.max(0, parseInt(v, 10) || 0)),
+        0
+      );
+    } else {
+      newTotalStock = (target.stock || 0) + qty;
+      updatedColourStocks["Standard"] = newTotalStock;
+    }
+
+    // 1. Immediate UI update
+    setProducts((prev) =>
+      prev.map((p) => {
+        if (p.id === id || (slug && p.slug === slug) || String(p.id) === String(id)) {
+          return {
+            ...p,
+            colour_stocks: Object.keys(updatedColourStocks).length > 0 ? updatedColourStocks : p.colour_stocks,
+            stock: newTotalStock,
+            updated_at: new Date().toISOString()
+          };
+        }
+        return p;
+      })
+    );
+
+    // 2. LocalStorage sync
+    try {
+      const local = JSON.parse(localStorage.getItem("saloriya_admin_products") || "[]");
+      const idx = local.findIndex((p) => p.id === id || (slug && p.slug === slug) || String(p.id) === String(id));
+      if (idx !== -1) {
+        if (Object.keys(updatedColourStocks).length > 0) {
+          local[idx].colour_stocks = updatedColourStocks;
+        }
+        local[idx].stock = newTotalStock;
+        localStorage.setItem("saloriya_admin_products", JSON.stringify(local));
+      }
+    } catch (e) {}
+
+    // 3. API sync
+    try {
+      await fetch(`/api/products/${id}/stock`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stock: newTotalStock,
+          colour_stocks: updatedColourStocks,
+          colour: cleanColour,
+          restoredQty: qty
         })
       });
     } catch (e) {}
@@ -912,6 +1086,7 @@ export function StoreProvider({ children }) {
     updateProductStock,
     updateProductColourStock,
     deductProductStock,
+    restoreProductStock,
     getColourStock,
     getTotalStock,
     isColourOutOfStock,

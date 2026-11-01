@@ -925,29 +925,27 @@ export default function AdminProductStudio({ products, onProductChanged, editing
                     {hasColours ? "Total Stock:" : "Quick Stock:"}
                   </span>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    {!hasColours && (
-                      <button
-                        type="button"
-                        className="button button-outline button-small"
-                        style={{ padding: "2px 8px", minHeight: "26px" }}
-                        onClick={() => handleStockDelta(p.id, p.stock || 0, -1)}
-                      >
-                        −
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      className="button button-outline button-small"
+                      style={{ padding: "2px 8px", minHeight: "26px" }}
+                      onClick={() => handleStockDelta(p.id, p.stock || 0, -1)}
+                      title="Decrease stock"
+                    >
+                      −
+                    </button>
                     <strong style={{ minWidth: "24px", textAlign: "center", color: p.stock <= 0 ? "#dc2626" : "inherit" }}>
                       {p.stock || 0} pcs
                     </strong>
-                    {!hasColours && (
-                      <button
-                        type="button"
-                        className="button button-outline button-small"
-                        style={{ padding: "2px 8px", minHeight: "26px" }}
-                        onClick={() => handleStockDelta(p.id, p.stock || 0, 1)}
-                      >
-                        +
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      className="button button-outline button-small"
+                      style={{ padding: "2px 8px", minHeight: "26px" }}
+                      onClick={() => handleStockDelta(p.id, p.stock || 0, 1)}
+                      title="Increase stock"
+                    >
+                      +
+                    </button>
                   </div>
                 </div>
 

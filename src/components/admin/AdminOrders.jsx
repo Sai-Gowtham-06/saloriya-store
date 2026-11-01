@@ -1,10 +1,11 @@
 import React, { useState } from "react";
-import { getColourImage } from "../../context/StoreContext";
+import { getColourImage, useStore } from "../../context/StoreContext";
 import { supabase, isSupabaseConfigured } from "../../supabase.js";
 import AdminDeleteConfirmModal from "./AdminDeleteConfirmModal.jsx";
 import AdminOrderPreviewModal from "./AdminOrderPreviewModal.jsx";
 
 export default function AdminOrders({ orders, products = [], onOrderUpdated, onOpenRecordOrder }) {
+  const { restoreProductStock } = useStore();
   const [paymentFilter, setPaymentFilter] = useState("all"); // 'all' | 'prepaid' | 'cod'
   const [statusFilter, setStatusFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -47,9 +48,45 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
       setPreviewOrder((prev) => (prev ? { ...prev, status: newStatus, order_status: newStatus } : null));
     }
 
+    // Restore stock back to inventory if order is being cancelled
+    if (newStatus === "cancelled") {
+      const orderToInspect = targetOrder || orders.find(
+        (o) => (o.order_id && o.order_id === targetOrderId) || (o.id && o.id === targetOrderId)
+      );
+      const prevStatus = String(orderToInspect?.status || orderToInspect?.order_status || "").toLowerCase();
+      if (prevStatus !== "cancelled") {
+        let itemsToRestore = [];
+        if (Array.isArray(orderToInspect?.items)) {
+          itemsToRestore = orderToInspect.items;
+        } else if (typeof orderToInspect?.items === "string") {
+          try {
+            const p = JSON.parse(orderToInspect.items);
+            if (Array.isArray(p)) itemsToRestore = p;
+          } catch (e) {}
+        }
+        if (!itemsToRestore.length && orderToInspect?.product_id) {
+          itemsToRestore = [{
+            product_id: orderToInspect.product_id,
+            variant_colour: orderToInspect.variant_colour || "Standard",
+            quantity: orderToInspect.quantity || 1
+          }];
+        }
+
+        for (const item of itemsToRestore) {
+          if (item.product_id && restoreProductStock) {
+            try {
+              await restoreProductStock(item.product_id, item.variant_colour || "Standard", item.quantity || 1);
+            } catch (err) {
+              console.warn("Stock restore warning:", err);
+            }
+          }
+        }
+      }
+    }
+
     // Toast feedback
     if (newStatus === "cancelled") {
-      setOrderToast(`Order #${targetOrderId} marked Cancelled. Use the WhatsApp button to send cancellation note.`);
+      setOrderToast(`✓ Order #${targetOrderId} cancelled & inventory stock restored.`);
       setTimeout(() => setOrderToast(""), 5000);
     } else if (newStatus === "confirmed") {
       setOrderToast(`Order #${targetOrderId} marked Confirmed.`);

@@ -1,7 +1,9 @@
 import React, { useState } from "react";
 import { supabase, isSupabaseConfigured } from "../../supabase.js";
+import { useStore, getColourStock } from "../../context/StoreContext";
 
 export default function AdminRecordOrderModal({ isOpen, onClose, products, onOrderCreated }) {
+  const { deductProductStock } = useStore();
   const [productId, setProductId] = useState("");
   const [selectedColour, setSelectedColour] = useState("");
   const [customerName, setCustomerName] = useState("");
@@ -89,11 +91,6 @@ export default function AdminRecordOrderModal({ isOpen, onClose, products, onOrd
           address: { full: address.trim() }
         };
         await supabase.from("orders").insert([sbPayload]);
-        if (orderStatus === "confirmed") {
-          const newStock = Math.max(0, (selectedProduct.stock || 0) - qty);
-          await supabase.from("products").update({ stock: newStock }).eq("id", selectedProduct.id);
-        }
-
         // Always save to cloud sync channel for real-time cross-device sync
         try {
           await supabase.from("promo_codes").upsert([{
@@ -109,20 +106,18 @@ export default function AdminRecordOrderModal({ isOpen, onClose, products, onOrd
       console.warn("Supabase order error:", dbErr);
     }
 
-    // 3. Save to localStorage
+    // 3. Deduct per-colour stock across state, localStorage, and DB
+    if (orderStatus === "confirmed") {
+      try {
+        await deductProductStock(selectedProduct.id, selectedColour || "Standard", qty);
+      } catch (e) {}
+    }
+
+    // 4. Save to localStorage
     try {
       const local = JSON.parse(localStorage.getItem("saloriya_admin_orders") || "[]");
       local.unshift(orderPayload);
       localStorage.setItem("saloriya_admin_orders", JSON.stringify(local));
-
-      if (orderStatus === "confirmed") {
-        const localProds = JSON.parse(localStorage.getItem("saloriya_admin_products") || "[]");
-        const idx = localProds.findIndex((p) => p.id === selectedProduct.id);
-        if (idx !== -1) {
-          localProds[idx].stock = Math.max(0, (localProds[idx].stock || 0) - qty);
-          localStorage.setItem("saloriya_admin_products", JSON.stringify(localProds));
-        }
-      }
     } catch (e) {}
 
     setSaving(false);
@@ -169,16 +164,24 @@ export default function AdminRecordOrderModal({ isOpen, onClose, products, onOrd
           {colours.length > 0 && (
             <label style={{ fontSize: "12px", fontWeight: 600 }}>
               Variant / Colour
+              {selectedProduct && selectedColour && (
+                <span style={{ marginLeft: "8px", fontWeight: 700, color: getColourStock(selectedProduct, selectedColour) <= 0 ? "#dc2626" : "#16a34a" }}>
+                  ({getColourStock(selectedProduct, selectedColour)} in stock{getColourStock(selectedProduct, selectedColour) <= 0 ? " - Out of Stock" : ""})
+                </span>
+              )}
               <select
                 value={selectedColour}
                 onChange={(e) => setSelectedColour(e.target.value)}
                 style={{ width: "100%", padding: "10px", marginTop: "4px", borderRadius: "6px", border: "1px solid var(--line)" }}
               >
-                {colours.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
+                {colours.map((c) => {
+                  const cStock = getColourStock(selectedProduct, c);
+                  return (
+                    <option key={c} value={c}>
+                      {c} ({cStock} in stock{cStock <= 0 ? " - Out of stock" : ""})
+                    </option>
+                  );
+                })}
               </select>
             </label>
           )}

@@ -3,7 +3,16 @@ import { useStore, getColourImage } from "../../context/StoreContext";
 import { supabase, isSupabaseConfigured } from "../../supabase.js";
 
 export default function CheckoutModal() {
-  const { checkoutItem, checkoutItems, closeCheckout, formatMoney, updateProductStock, clearCart } = useStore();
+  const {
+    checkoutItem,
+    checkoutItems,
+    closeCheckout,
+    formatMoney,
+    updateProductStock,
+    deductProductStock,
+    getColourStock,
+    clearCart
+  } = useStore();
 
   const [qty, setQty] = useState(1);
   const [customerName, setCustomerName] = useState("");
@@ -577,6 +586,16 @@ export default function CheckoutModal() {
         ? activeItems.map((it) => `${it.name || it.product?.name} (${it.colour || "Standard"} ×${it.quantity || 1})`).join(", ")
         : product.name;
 
+      const effectivePromoCode = appliedPromo ? String(appliedPromo.code).toUpperCase().trim() : null;
+      const isFreeDeliveryPromo = appliedPromo && (
+        String(appliedPromo.discount_type || "").toLowerCase().includes("delivery") ||
+        String(appliedPromo.discount_type || "").toLowerCase().includes("free") ||
+        effectivePromoCode === "FREEDELIVERY"
+      );
+      const recordedDiscountPaise = effectiveDiscountPaise > 0
+        ? effectiveDiscountPaise
+        : (isFreeDeliveryPromo ? 5000 : 0);
+
       const orderPayload = {
         order_id: orderId,
         customer_name: customerName.trim(),
@@ -592,11 +611,11 @@ export default function CheckoutModal() {
         items: orderItems,
         subtotal_paise: subtotalPaise,
         total_paise: totalPaise,
-        discount_paise: effectiveDiscountPaise,
+        discount_paise: recordedDiscountPaise,
         payment_method: paymentMethod,
         utr_number: utrNumber.trim() || null,
         payment_screenshot: screenshotDataUrl || null,
-        promo_code: appliedPromo ? appliedPromo.code : null,
+        promo_code: effectivePromoCode,
         status: "confirmed",
         order_status: "confirmed",
         created_at: new Date().toISOString(),
@@ -638,14 +657,14 @@ export default function CheckoutModal() {
             quantity: totalOrderedQty,
             subtotal_paise: subtotalPaise,
             total_paise: totalPaise,
-            discount_paise: effectiveDiscountPaise,
+            discount_paise: recordedDiscountPaise,
             payment_method: paymentMethod,
             payment_status: paymentMethod === "prepaid" ? "paid" : "pending",
             order_status: "confirmed",
             status: "confirmed",
             utr_number: utrNumber.trim() || null,
             payment_screenshot: screenshotDataUrl || null,
-            promo_code: appliedPromo ? appliedPromo.code : null,
+            promo_code: effectivePromoCode,
             email_token: emailToken || null,
             created_at: orderPayload.created_at,
             updated_at: orderPayload.updated_at
@@ -675,8 +694,8 @@ export default function CheckoutModal() {
               order_status: "confirmed",
               status: "confirmed",
               total_paise: totalPaise,
-              discount_paise: effectiveDiscountPaise,
-              promo_code: appliedPromo ? appliedPromo.code : null
+              discount_paise: recordedDiscountPaise,
+              promo_code: effectivePromoCode
             }], { onConflict: "order_id" }).catch(() => { });
           }
 
@@ -725,15 +744,25 @@ export default function CheckoutModal() {
         }).catch(() => { });
       } catch (e) { }
 
-      // 5. Deduct stock for all ordered pieces
+      // Verify colour stock availability before completing order
+      for (const it of orderItems) {
+        const prod = (checkoutItem?.product?.id === it.product_id ? checkoutItem.product : null) || it.product || product;
+        if (prod) {
+          const available = getColourStock(prod, it.variant_colour);
+          if (available <= 0) {
+            setFormError(`⚠️ Sorry, "${it.product_name}" (${it.variant_colour}) is currently out of stock. Please choose an in-stock colour.`);
+            setSubmitting(false);
+            return;
+          }
+        }
+      }
+
+      // 5. Deduct stock for each ordered piece & specific colour variant
       for (const it of orderItems) {
         try {
           const pId = it.product_id;
           if (pId) {
-            const pObj = (checkoutItem?.product?.id === pId ? checkoutItem.product : null) || (it.product || product);
-            const currentStock = pObj?.stock ?? 5;
-            const updatedStock = Math.max(0, currentStock - (it.quantity || 1));
-            await updateProductStock(pId, updatedStock);
+            await deductProductStock(pId, it.variant_colour || "Standard", it.quantity || 1);
           }
         } catch (stockErr) {
           console.warn("Stock deduction warning:", stockErr);

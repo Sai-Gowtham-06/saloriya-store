@@ -2071,6 +2071,44 @@ body.modal-open {
   transform: translateY(-1px);
 }
 
+.modal-colour-pill.sold-out {
+  background: #fdf6f6;
+  border-color: #fca5a5;
+  color: #991b1b;
+  opacity: 0.88;
+}
+
+.modal-colour-pill.sold-out:hover {
+  border-color: #dc2626;
+  color: #7f1d1d;
+}
+
+.modal-colour-pill.sold-out.active {
+  background: #991b1b;
+  border-color: #991b1b;
+  color: #ffffff;
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #991b1b, 0 4px 10px rgba(153, 27, 27, 0.35);
+}
+
+.pill-sold-badge {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 8.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #fee2e2;
+  color: #991b1b;
+  vertical-align: middle;
+}
+
+.modal-colour-pill.active .pill-sold-badge {
+  background: rgba(255, 255, 255, 0.28);
+  color: #ffffff;
+}
+
 .modal-highlights {
   background: #fffcfb;
   border: 1px solid var(--line);
@@ -3949,6 +3987,44 @@ body.modal-open {
   font-weight: 700;
   box-shadow: 0 0 0 2px #ffffff, 0 0 0 3.5px var(--wine), 0 2px 6px rgba(134, 30, 56, 0.3);
   transform: translateY(-1px);
+}
+
+.card-colour-swatch.sold-out {
+  background: #fdf6f6;
+  border-color: #fca5a5;
+  color: #991b1b;
+  opacity: 0.85;
+}
+
+.card-colour-swatch.sold-out:hover {
+  border-color: #dc2626;
+  color: #7f1d1d;
+}
+
+.card-colour-swatch.sold-out.active {
+  background: #991b1b;
+  border-color: #991b1b;
+  color: #ffffff;
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 3.5px #991b1b, 0 2px 6px rgba(153, 27, 27, 0.35);
+}
+
+.swatch-sold-tag {
+  display: inline-block;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 4.5px;
+  border-radius: 4px;
+  background: #fee2e2;
+  color: #991b1b;
+  margin-left: 2px;
+  line-height: 1.15;
+}
+
+.card-colour-swatch.active .swatch-sold-tag {
+  background: rgba(255, 255, 255, 0.28);
+  color: #ffffff;
 }
 
 .card-variant-badge {

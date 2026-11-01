@@ -235,7 +235,8 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
       const matchPhone = String(o.customer_phone || o.phone || "").includes(q);
       const matchId = String(o.order_id || o.id || "").toLowerCase().includes(q);
       const matchProduct = String(o.product_name || "").toLowerCase().includes(q);
-      if (!matchName && !matchPhone && !matchId && !matchProduct) return false;
+      const matchPromo = String(o.promo_code || "").toLowerCase().includes(q);
+      if (!matchName && !matchPhone && !matchId && !matchProduct && !matchPromo) return false;
     }
 
     return true;
@@ -348,6 +349,28 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
             >
               👁️ Preview Order
             </button>
+            {order.promo_code && (
+              <span
+                className="promo-order-badge highlighted"
+                style={{
+                  background: "linear-gradient(135deg, #fef3c7, #fde68a)",
+                  color: "#92400e",
+                  border: "1.5px solid #f59e0b",
+                  boxShadow: "0 2px 6px rgba(245, 158, 11, 0.25)",
+                  fontWeight: 800,
+                  fontSize: "11px",
+                  padding: "4px 10px",
+                  borderRadius: "12px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px"
+                }}
+                title={`Promo Code Applied: ${order.promo_code}`}
+              >
+                🏷️ PROMO: <strong>{order.promo_code}</strong>
+                {order.discount_paise > 0 && ` (-${formatMoney(order.discount_paise)})`}
+              </span>
+            )}
             <span className={`payment-tag ${isPrepaid ? "paid" : ""}`}>
               {isPrepaid ? "⚡ UPI PREPAID" : "💵 CASH ON DELIVERY"}
             </span>
@@ -388,6 +411,55 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
             <div style={{ fontSize: "12.5px", color: "var(--muted)", lineHeight: 1.4, marginTop: "4px" }}>
               📍 {customerAddress}
             </div>
+
+            {order.promo_code && (
+              <div
+                className="promo-highlight-strip"
+                style={{
+                  background: "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)",
+                  border: "1.5px solid #f59e0b",
+                  borderRadius: "6px",
+                  padding: "6px 10px",
+                  marginTop: "8px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "6px",
+                  boxShadow: "0 1px 4px rgba(245, 158, 11, 0.15)"
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPreviewOrder(order);
+                }}
+                title="Click to view full order preview"
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                  <span style={{ fontSize: "15px" }}>🏷️</span>
+                  <div>
+                    <span style={{ fontSize: "9.5px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "#92400e", display: "block", lineHeight: 1.1 }}>
+                      Promo Voucher Applied
+                    </span>
+                    <strong style={{ fontSize: "12px", fontFamily: "monospace", color: "#78350f" }}>
+                      {order.promo_code}
+                    </strong>
+                  </div>
+                </div>
+                <span
+                  style={{
+                    background: "#ffffff",
+                    border: "1px solid #d97706",
+                    borderRadius: "4px",
+                    padding: "2px 6px",
+                    fontSize: "11px",
+                    fontWeight: 800,
+                    color: "#b45309",
+                    whiteSpace: "nowrap"
+                  }}
+                >
+                  {order.discount_paise > 0 ? `-${formatMoney(order.discount_paise)}` : "Special Promo"}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Order Items Column with Preview Image or Multi-Item List */}
@@ -440,9 +512,16 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
                         >
                           👁️ Preview Pieces
                         </span>
-                        <strong style={{ fontSize: "14px", color: isDelivered ? "#15803d" : "var(--wine)" }}>
-                          Total: {formatMoney(order.total_paise)}
-                        </strong>
+                        <div style={{ textAlign: "right" }}>
+                          <strong style={{ fontSize: "14px", color: isDelivered ? "#15803d" : "var(--wine)", display: "block" }}>
+                            Total: {formatMoney(order.total_paise)}
+                          </strong>
+                          {order.promo_code && (
+                            <span style={{ fontSize: "10.5px", color: "#b45309", fontWeight: 700, display: "block" }}>
+                              🏷️ {order.promo_code}: {order.discount_paise > 0 ? `-${formatMoney(order.discount_paise)}` : "Applied"}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 
@@ -603,9 +682,16 @@ export default function AdminOrders({ orders, products = [], onOrderUpdated, onO
                       </div>
                     </div>
 
-                    <strong style={{ fontSize: "16px", color: isDelivered ? "#15803d" : "var(--wine)", flexShrink: 0 }}>
-                      {formatMoney(order.total_paise)}
-                    </strong>
+                    <div style={{ textAlign: "right", flexShrink: 0 }}>
+                      <strong style={{ fontSize: "16px", color: isDelivered ? "#15803d" : "var(--wine)", display: "block" }}>
+                        {formatMoney(order.total_paise)}
+                      </strong>
+                      {order.promo_code && (
+                        <span style={{ fontSize: "10.5px", color: "#b45309", fontWeight: 700, display: "block" }}>
+                          🏷️ {order.promo_code}: {order.discount_paise > 0 ? `-${formatMoney(order.discount_paise)}` : "Applied"}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {order.utr_number && (

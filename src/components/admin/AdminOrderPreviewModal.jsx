@@ -392,6 +392,28 @@ export default function AdminOrderPreviewModal({
                   <span className={`payment-tag ${isPrepaid ? "paid" : ""}`} style={{ fontSize: "11px", padding: "3px 8px" }}>
                     {isPrepaid ? "⚡ UPI PREPAID" : "💵 CASH ON DELIVERY"}
                   </span>
+
+                  {order.promo_code && (
+                    <span
+                      style={{
+                        background: "linear-gradient(135deg, #fef3c7, #fde68a)",
+                        border: "1.5px solid #d97706",
+                        color: "#92400e",
+                        fontWeight: 800,
+                        fontSize: "11px",
+                        padding: "3px 10px",
+                        borderRadius: "6px",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: "4px",
+                        boxShadow: "0 1px 4px rgba(217, 119, 6, 0.2)"
+                      }}
+                      title={`Promo Code Applied: ${order.promo_code}`}
+                    >
+                      🏷️ PROMO: <strong>{order.promo_code}</strong>
+                      {order.discount_paise > 0 && ` (-${moneyFormatter(order.discount_paise)})`}
+                    </span>
+                  )}
                 </div>
 
                 <span style={{ fontSize: "11.5px", color: "var(--muted)" }}>
@@ -474,6 +496,34 @@ export default function AdminOrderPreviewModal({
                     </div>
                   )}
 
+                  {order.promo_code && (
+                    <div style={{ display: "flex", gap: "6px", alignItems: "center", marginTop: "2px" }}>
+                      <span style={{ color: "var(--muted)", width: "65px", flexShrink: 0 }}>Promo:</span>
+                      <span
+                        style={{
+                          background: "#fffbeb",
+                          border: "1px solid #f59e0b",
+                          color: "#92400e",
+                          padding: "2px 8px",
+                          borderRadius: "4px",
+                          fontFamily: "monospace",
+                          fontWeight: 800,
+                          fontSize: "12px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px"
+                        }}
+                      >
+                        🏷️ {order.promo_code}
+                        {order.discount_paise > 0 && (
+                          <span style={{ color: "#15803d", fontWeight: 700, marginLeft: "4px" }}>
+                            (-{moneyFormatter(order.discount_paise)})
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  )}
+
                   <div style={{ display: "flex", gap: "6px", marginTop: "2px" }}>
                     <span style={{ color: "var(--muted)", width: "65px", flexShrink: 0 }}>Address:</span>
                     <div
@@ -529,9 +579,58 @@ export default function AdminOrderPreviewModal({
                     <strong>{itemsList.length} piece{itemsList.length === 1 ? "" : "s"}</strong>
                   </div>
 
+                  {order.promo_code && (
+                    <div
+                      style={{
+                        background: "linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)",
+                        border: "1.5px solid #f59e0b",
+                        borderRadius: "6px",
+                        padding: "8px 12px",
+                        margin: "6px 0",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "8px",
+                        boxShadow: "0 1px 4px rgba(245, 158, 11, 0.15)"
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                        <span style={{ fontSize: "16px" }}>🏷️</span>
+                        <div>
+                          <span style={{ fontSize: "9.5px", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "#92400e", display: "block", lineHeight: 1.1 }}>
+                            Promo Code Applied
+                          </span>
+                          <strong style={{ fontSize: "13px", fontFamily: "monospace", color: "#78350f" }}>
+                            {order.promo_code}
+                          </strong>
+                        </div>
+                      </div>
+                      <span
+                        style={{
+                          background: "#ffffff",
+                          border: "1px solid #d97706",
+                          borderRadius: "4px",
+                          padding: "2px 8px",
+                          fontSize: "11.5px",
+                          fontWeight: 800,
+                          color: "#b45309"
+                        }}
+                      >
+                        {order.discount_paise > 0 ? `- ${moneyFormatter(order.discount_paise)}` : "Free Delivery / Promo Applied"}
+                      </span>
+                    </div>
+                  )}
+
+                  {order.subtotal_paise > 0 && order.subtotal_paise !== order.total_paise && (
+                    <div style={{ display: "flex", justifyContent: "space-between", color: "var(--muted)" }}>
+                      <span>Items Subtotal:</span>
+                      <span>{moneyFormatter(order.subtotal_paise)}</span>
+                    </div>
+                  )}
+
                   {order.discount_paise > 0 && (
-                    <div style={{ display: "flex", justifyContent: "space-between", color: "#15803d" }}>
-                      <span>Discount ({order.promo_code || "Promo"}):</span>
+                    <div style={{ display: "flex", justifyContent: "space-between", color: "#15803d", fontWeight: 700 }}>
+                      <span>Promo Discount ({order.promo_code || "Promo"}):</span>
                       <span>- {moneyFormatter(order.discount_paise)}</span>
                     </div>
                   )}

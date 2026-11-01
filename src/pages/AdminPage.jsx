@@ -161,7 +161,9 @@ export default function AdminPage() {
         customer_phone: o.customer_phone || o.phone || "",
         delivery_address: o.delivery_address || (typeof o.address === "object" ? (o.address?.full || `${o.address?.street || ""}, ${o.address?.city || ""}`) : String(o.address || "")),
         status: (o.status || o.order_status || "confirmed").toLowerCase(),
-        payment_method: (o.payment_method || "cod").toLowerCase()
+        payment_method: (o.payment_method || "cod").toLowerCase(),
+        promo_code: o.promo_code || o.promoCode || (o.promo ? (typeof o.promo === "string" ? o.promo : o.promo.code) : null),
+        discount_paise: o.discount_paise ?? o.discountPaise ?? 0
       };
 
       const itemPhone = normalizePhone(normalizedItem.customer_phone);
@@ -209,6 +211,10 @@ export default function AdminPage() {
         const merged = {
           ...secondary,
           ...richerOrder,
+          promo_code: richerOrder.promo_code || secondary.promo_code || null,
+          discount_paise: (richerOrder.discount_paise !== undefined && richerOrder.discount_paise !== null && richerOrder.discount_paise > 0)
+            ? richerOrder.discount_paise
+            : (secondary.discount_paise ?? 0),
           id: richerOrder.id || secondary.id,
           order_id: (richerOrder.order_id && !richerOrder.order_id.includes("-") ? richerOrder.order_id : null) ||
                     (richerOrder.order_id && !richerOrder.order_id.startsWith("SLR-") ? richerOrder.order_id : null) ||

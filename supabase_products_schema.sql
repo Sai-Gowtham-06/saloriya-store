@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS public.products (
   price_paise INTEGER NOT NULL DEFAULT 0,
   colours TEXT[] DEFAULT ARRAY[]::TEXT[],
   stock INTEGER NOT NULL DEFAULT 5,
+  colour_stocks JSONB DEFAULT '{}'::jsonb,
   image_urls TEXT[] DEFAULT ARRAY[]::TEXT[],
   is_published BOOLEAN NOT NULL DEFAULT true,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -27,6 +28,7 @@ ALTER TABLE public.products ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'Comb
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS price_paise INTEGER DEFAULT 0;
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS colours TEXT[] DEFAULT ARRAY[]::TEXT[];
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS stock INTEGER DEFAULT 5;
+ALTER TABLE public.products ADD COLUMN IF NOT EXISTS colour_stocks JSONB DEFAULT '{}'::jsonb;
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS image_urls TEXT[] DEFAULT ARRAY[]::TEXT[];
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS is_published BOOLEAN DEFAULT true;
 ALTER TABLE public.products ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();

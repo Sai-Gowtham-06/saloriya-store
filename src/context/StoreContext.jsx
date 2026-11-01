@@ -13,14 +13,22 @@ import {
   getColourImage,
   getColourForImage,
   hasProductColours,
-  sortProductsByColourAvailability
+  sortProductsByColourAvailability,
+  getColourStock,
+  getTotalStock,
+  isColourOutOfStock,
+  isProductOutOfStock
 } from "./storeUtils.js";
 export {
   normalizeProduct,
   getColourImage,
   getColourForImage,
   hasProductColours,
-  sortProductsByColourAvailability
+  sortProductsByColourAvailability,
+  getColourStock,
+  getTotalStock,
+  isColourOutOfStock,
+  isProductOutOfStock
 };
 
 export function StoreProvider({ children }) {
@@ -149,18 +157,33 @@ export function StoreProvider({ children }) {
     fetchProducts();
   }, []);
 
-  // Action: Update Stock
-  const updateProductStock = async (productId, newStock) => {
+  // Action: Update Stock (Overall or per-colour stocks map)
+  const updateProductStock = async (productId, newStock, colourStocks = null) => {
     const cleanStock = Math.max(0, parseInt(newStock, 10) || 0);
     const target = products.find((p) => p.id === productId || p.slug === productId);
     const id = target?.id || productId;
     const slug = target?.slug;
 
+    let finalColourStocks = colourStocks;
+    let finalStock = cleanStock;
+
+    if (colourStocks && typeof colourStocks === "object") {
+      finalColourStocks = { ...colourStocks };
+      finalStock = Object.values(finalColourStocks).reduce((sum, v) => sum + (Math.max(0, parseInt(v, 10) || 0)), 0);
+    } else if (target && Array.isArray(target.colours) && target.colours.length === 1) {
+      finalColourStocks = { [target.colours[0]]: cleanStock };
+    }
+
     // 1. Immediate UI update
     setProducts((prev) =>
       prev.map((p) =>
         p.id === id || (slug && p.slug === slug)
-          ? { ...p, stock: cleanStock, updated_at: new Date().toISOString() }
+          ? {
+              ...p,
+              stock: finalStock,
+              ...(finalColourStocks ? { colour_stocks: finalColourStocks } : {}),
+              updated_at: new Date().toISOString()
+            }
           : p
       )
     );
@@ -170,9 +193,14 @@ export function StoreProvider({ children }) {
       const local = JSON.parse(localStorage.getItem("saloriya_admin_products") || "[]");
       const idx = local.findIndex((p) => p.id === id || (slug && p.slug === slug));
       if (idx !== -1) {
-        local[idx].stock = cleanStock;
+        local[idx].stock = finalStock;
+        if (finalColourStocks) local[idx].colour_stocks = finalColourStocks;
       } else if (target) {
-        local.push({ ...target, stock: cleanStock });
+        local.push({
+          ...target,
+          stock: finalStock,
+          ...(finalColourStocks ? { colour_stocks: finalColourStocks } : {})
+        });
       }
       localStorage.setItem("saloriya_admin_products", JSON.stringify(local));
     } catch (e) {}
@@ -182,16 +210,196 @@ export function StoreProvider({ children }) {
       await fetch(`/api/products/${id}/stock`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ stock: cleanStock })
+        body: JSON.stringify({
+          stock: finalStock,
+          ...(finalColourStocks ? { colour_stocks: finalColourStocks } : {})
+        })
       });
     } catch (e) {}
 
     // 4. Supabase sync
     if (isSupabaseConfigured) {
       try {
-        await supabase.from("products").update({ stock: cleanStock }).eq("id", id);
-        if (slug) await supabase.from("products").update({ stock: cleanStock }).eq("slug", slug);
-      } catch (e) {}
+        const payload = { stock: finalStock };
+        if (finalColourStocks) payload.colour_stocks = finalColourStocks;
+        await supabase.from("products").update(payload).eq("id", id);
+      } catch (e) {
+        try {
+          await supabase.from("products").update({ stock: finalStock }).eq("id", id);
+        } catch (e2) {}
+      }
+    }
+  };
+
+  // Action: Update individual colour stock for a product
+  const updateProductColourStock = async (productId, colourName, newStock) => {
+    const cleanStock = Math.max(0, parseInt(newStock, 10) || 0);
+    const target = products.find((p) => p.id === productId || p.slug === productId);
+    const id = target?.id || productId;
+    const slug = target?.slug;
+    const colourKey = (colourName || "").trim();
+
+    let updatedColourStocks = {};
+    if (target && target.colour_stocks && typeof target.colour_stocks === "object") {
+      updatedColourStocks = { ...target.colour_stocks };
+    }
+    updatedColourStocks[colourKey] = cleanStock;
+
+    // Recalculate total stock
+    const newTotalStock = Object.values(updatedColourStocks).reduce(
+      (sum, v) => sum + (Math.max(0, parseInt(v, 10) || 0)),
+      0
+    );
+
+    // 1. Immediate UI update
+    setProducts((prev) =>
+      prev.map((p) => {
+        if (p.id === id || (slug && p.slug === slug)) {
+          const cStocks = { ...(p.colour_stocks || {}), [colourKey]: cleanStock };
+          const tot = Object.values(cStocks).reduce((sum, v) => sum + (Math.max(0, parseInt(v, 10) || 0)), 0);
+          return {
+            ...p,
+            colour_stocks: cStocks,
+            stock: tot,
+            updated_at: new Date().toISOString()
+          };
+        }
+        return p;
+      })
+    );
+
+    // 2. LocalStorage sync
+    try {
+      const local = JSON.parse(localStorage.getItem("saloriya_admin_products") || "[]");
+      const idx = local.findIndex((p) => p.id === id || (slug && p.slug === slug));
+      if (idx !== -1) {
+        local[idx].colour_stocks = { ...(local[idx].colour_stocks || {}), [colourKey]: cleanStock };
+        local[idx].stock = Object.values(local[idx].colour_stocks).reduce(
+          (sum, v) => sum + (Math.max(0, parseInt(v, 10) || 0)),
+          0
+        );
+      } else if (target) {
+        local.push({ ...target, colour_stocks: updatedColourStocks, stock: newTotalStock });
+      }
+      localStorage.setItem("saloriya_admin_products", JSON.stringify(local));
+    } catch (e) {}
+
+    // 3. API sync
+    try {
+      await fetch(`/api/products/${id}/stock`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stock: newTotalStock,
+          colour_stocks: updatedColourStocks,
+          colour: colourKey,
+          colourStock: cleanStock
+        })
+      });
+    } catch (e) {}
+
+    // 4. Supabase sync
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from("products").update({
+          stock: newTotalStock,
+          colour_stocks: updatedColourStocks
+        }).eq("id", id);
+      } catch (e) {
+        try {
+          await supabase.from("products").update({ stock: newTotalStock }).eq("id", id);
+        } catch (e2) {}
+      }
+    }
+  };
+
+  // Action: Deduct product stock when an order is placed
+  const deductProductStock = async (productId, colourName, quantity = 1) => {
+    const qty = Math.max(1, parseInt(quantity, 10) || 1);
+    const target = products.find((p) => p.id === productId || p.slug === productId);
+    if (!target) return;
+    const id = target.id || productId;
+    const slug = target.slug;
+    const cleanColour = (colourName || "Standard").trim();
+
+    let updatedColourStocks = { ...(target.colour_stocks || {}) };
+    let newTotalStock = target.stock || 0;
+
+    // Find if target has matching colour key (case-insensitive)
+    const matchedKey = Object.keys(updatedColourStocks).find(
+      (k) => k.trim().toLowerCase() === cleanColour.toLowerCase()
+    );
+
+    if (matchedKey) {
+      const cur = Math.max(0, parseInt(updatedColourStocks[matchedKey], 10) || 0);
+      updatedColourStocks[matchedKey] = Math.max(0, cur - qty);
+      newTotalStock = Object.values(updatedColourStocks).reduce(
+        (sum, v) => sum + (Math.max(0, parseInt(v, 10) || 0)),
+        0
+      );
+    } else if (Array.isArray(target.colours) && target.colours.length > 0) {
+      const foundColour = target.colours.find((c) => c.trim().toLowerCase() === cleanColour.toLowerCase()) || target.colours[0];
+      const cur = Math.max(0, parseInt(target.stock, 10) || 0);
+      updatedColourStocks[foundColour] = Math.max(0, cur - qty);
+      newTotalStock = Math.max(0, cur - qty);
+    } else {
+      newTotalStock = Math.max(0, (target.stock || 0) - qty);
+    }
+
+    // 1. Immediate UI update
+    setProducts((prev) =>
+      prev.map((p) => {
+        if (p.id === id || (slug && p.slug === slug)) {
+          return {
+            ...p,
+            colour_stocks: Object.keys(updatedColourStocks).length > 0 ? updatedColourStocks : p.colour_stocks,
+            stock: newTotalStock,
+            updated_at: new Date().toISOString()
+          };
+        }
+        return p;
+      })
+    );
+
+    // 2. LocalStorage sync
+    try {
+      const local = JSON.parse(localStorage.getItem("saloriya_admin_products") || "[]");
+      const idx = local.findIndex((p) => p.id === id || (slug && p.slug === slug));
+      if (idx !== -1) {
+        if (Object.keys(updatedColourStocks).length > 0) {
+          local[idx].colour_stocks = updatedColourStocks;
+        }
+        local[idx].stock = newTotalStock;
+        localStorage.setItem("saloriya_admin_products", JSON.stringify(local));
+      }
+    } catch (e) {}
+
+    // 3. API sync
+    try {
+      await fetch(`/api/products/${id}/stock`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          stock: newTotalStock,
+          colour_stocks: updatedColourStocks,
+          colour: cleanColour,
+          deductedQty: qty
+        })
+      });
+    } catch (e) {}
+
+    // 4. Supabase sync
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from("products").update({
+          stock: newTotalStock,
+          colour_stocks: updatedColourStocks
+        }).eq("id", id);
+      } catch (e) {
+        try {
+          await supabase.from("products").update({ stock: newTotalStock }).eq("id", id);
+        } catch (e2) {}
+      }
     }
   };
 
@@ -335,6 +543,7 @@ export function StoreProvider({ children }) {
           price_paise: Number(normalized.price_paise) || 0,
           stock: Number(normalized.stock) || 0,
           colours: Array.isArray(normalized.colours) ? normalized.colours : [],
+          colour_stocks: (normalized.colour_stocks && typeof normalized.colour_stocks === "object") ? normalized.colour_stocks : {},
           image_urls: Array.isArray(normalized.image_urls) ? normalized.image_urls : [],
           is_published: normalized.is_published !== false,
           updated_at: new Date().toISOString()
@@ -455,9 +664,17 @@ export function StoreProvider({ children }) {
   const addToCart = (product, selectedColour = null, quantity = 1) => {
     if (!product) return;
     const colour = selectedColour || (product.colours && product.colours[0]) || "Standard";
+    const availableStock = getColourStock(product, colour);
+
+    if (availableStock <= 0) {
+      setCartToast(`⚠️ "${product.name}" (${colour}) is currently out of stock.`);
+      setTimeout(() => setCartToast(""), 3500);
+      return;
+    }
+
     const cleanQty = Math.max(1, parseInt(quantity, 10) || 1);
     const cartItemId = `${product.id || product.slug}_${colour}`;
-    const maxStock = Math.max(1, product.stock ?? 5);
+    const maxStock = Math.max(1, availableStock);
 
     setCart((prevCart) => {
       const idx = prevCart.findIndex((item) => item.cartItemId === cartItemId);
@@ -467,7 +684,8 @@ export function StoreProvider({ children }) {
         const newQty = updated[idx].quantity + cleanQty;
         updated[idx] = {
           ...updated[idx],
-          quantity: Math.min(newQty, maxStock)
+          quantity: Math.min(newQty, maxStock),
+          stock: maxStock
         };
       } else {
         const itemImage = getColourImage(product, colour, 0) || product.image_urls?.[0] || product.images?.[0] || "";
@@ -502,8 +720,9 @@ export function StoreProvider({ children }) {
       } else {
         updated = prevCart.map((item) => {
           if (item.cartItemId === cartItemId) {
-            const maxStock = Math.max(1, item.product?.stock ?? item.stock ?? 99);
-            return { ...item, quantity: Math.min(newQty, maxStock) };
+            const avail = getColourStock(item.product, item.colour);
+            const maxStock = Math.max(1, avail || item.stock || 99);
+            return { ...item, quantity: Math.min(newQty, maxStock), stock: maxStock };
           }
           return item;
         });
@@ -557,6 +776,7 @@ export function StoreProvider({ children }) {
 
   const openCheckout = (product, initialColour = null) => {
     const colour = initialColour || (product.colours && product.colours[0]) || "Standard";
+    const availStock = getColourStock(product, colour);
     const itemImage = getColourImage(product, colour, 0) || product.image_urls?.[0] || product.images?.[0] || "";
     const singleCartItem = {
       cartItemId: `${product.id || product.slug}_${colour}`,
@@ -567,7 +787,7 @@ export function StoreProvider({ children }) {
       image: itemImage,
       unit_price_paise: product.price_paise || 0,
       quantity: 1,
-      stock: product.stock ?? 5
+      stock: availStock
     };
     setCheckoutItems([singleCartItem]);
     setCheckoutItem({
@@ -619,7 +839,13 @@ export function StoreProvider({ children }) {
       if (activePriceFilter === "700-999" && (inr < 700 || inr > 999)) return false;
       if (activePriceFilter === "1000-plus" && inr < 1000) return false;
 
-      if (inStockOnly && (p.stock || 0) <= 0) return false;
+      if (inStockOnly) {
+        if (activeColourFilter !== "all") {
+          if (getColourStock(p, activeColourFilter) <= 0) return false;
+        } else if (isProductOutOfStock(p)) {
+          return false;
+        }
+      }
 
       return true;
     }).sort((a, b) => {
@@ -684,6 +910,12 @@ export function StoreProvider({ children }) {
     closeCart,
     openCartCheckout,
     updateProductStock,
+    updateProductColourStock,
+    deductProductStock,
+    getColourStock,
+    getTotalStock,
+    isColourOutOfStock,
+    isProductOutOfStock,
     toggleProductPublish,
     deleteProduct,
     saveProduct,

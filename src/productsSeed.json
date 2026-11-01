@@ -1,5 +1,27 @@
 [
   {
+    "id": "89810964-6714-4df2-a650-8b74e69d6eef",
+    "name": "Emerald Royalty Choker Necklace",
+    "slug": "emerald-royalty-choker-necklace",
+    "description": "",
+    "category": "Combos",
+    "price_paise": 89900,
+    "stock": 8,
+    "colours": [
+      "EMERALD GREEN",
+      "RUBY RED"
+    ],
+    "colour_stocks": {
+      "EMERALD GREEN": 4,
+      "RUBY RED": 4
+    },
+    "image_urls": [],
+    "images": [],
+    "is_published": true,
+    "updated_at": "2026-11-01T16:44:26.640Z",
+    "created_at": "2026-11-01T16:43:44.061Z"
+  },
+  {
     "id": "2fb78137-672d-40f1-b058-9f3803f9642e",
     "name": "Royal Square Pearl Jhumka Earrings",
     "slug": "royal-pearl-antique-gold-jhumka-earrings",
@@ -22,6 +44,14 @@
       "SKY BLUE",
       "RED"
     ],
+    "colour_stocks": {
+      "BLUE": 1,
+      "BLACK": 1,
+      "GREEN": 1,
+      "PINK": 1,
+      "SKY BLUE": 1,
+      "RED": 1
+    },
     "stock": 6,
     "is_published": false,
     "created_at": "2026-10-23T10:04:42.320745+00:00",
@@ -40,6 +70,9 @@
     "colours": [
       "BLACK METAL"
     ],
+    "colour_stocks": {
+      "BLACK METAL": 20
+    },
     "stock": 20,
     "is_published": true,
     "created_at": "2026-10-22T08:36:04.073747+00:00",
@@ -66,6 +99,13 @@
       "SKY BLUE",
       "RED"
     ],
+    "colour_stocks": {
+      "BLACK": 2,
+      "GREEN": 0,
+      "VIOLET": 1,
+      "SKY BLUE": 2,
+      "RED": 0
+    },
     "stock": 5,
     "is_published": true,
     "created_at": "2026-10-23T10:20:20.764931+00:00",
@@ -92,10 +132,17 @@
       "GREEN",
       "MAROON"
     ],
-    "stock": 2,
+    "colour_stocks": {
+      "PINK": 2,
+      "BLACK": 1,
+      "RED": 1,
+      "GREEN": 1,
+      "MAROON": 1
+    },
+    "stock": 6,
     "is_published": true,
     "created_at": "2026-10-23T11:47:00.55747+00:00",
-    "updated_at": "2026-10-28T13:29:50.289Z"
+    "updated_at": "2026-11-01T17:07:54.612Z"
   },
   {
     "id": "f6ebe650-629a-4a3f-bf6c-ff07e1c0a53a",
@@ -112,10 +159,14 @@
       "BLUE",
       "RED"
     ],
-    "stock": 2,
+    "colour_stocks": {
+      "BLUE": 2,
+      "RED": 1
+    },
+    "stock": 3,
     "is_published": true,
     "created_at": "2026-10-23T12:04:17.271918+00:00",
-    "updated_at": "2026-10-28T13:29:49.531Z"
+    "updated_at": "2026-11-01T17:08:00.201Z"
   },
   {
     "id": "0fa9cd8e-dd35-4951-93f8-bbd270e2cc2e",
@@ -138,10 +189,17 @@
       "GREEN",
       "SKY BLUE"
     ],
+    "colour_stocks": {
+      "MAROON": 0,
+      "BLUE": 1,
+      "PINK": 1,
+      "GREEN": 1,
+      "SKY BLUE": 1
+    },
     "stock": 4,
     "is_published": true,
     "created_at": "2026-10-23T11:32:25.96304+00:00",
-    "updated_at": "2026-10-27T18:19:58.980Z"
+    "updated_at": "2026-11-01T17:08:04.445Z"
   },
   {
     "id": "a98b731a-154b-4dec-8b81-dd95b4141c11",

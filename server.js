@@ -105,12 +105,29 @@ app.get("/api/products", (req, res) => {
 
 app.put("/api/products/:id/stock", (req, res) => {
   const { id } = req.params;
-  const { stock } = req.body;
+  const { stock, colour_stocks, colour, colourStock } = req.body;
   const products = readProductsFromFile();
   const idx = products.findIndex((p) => p.id === id || p.slug === id);
 
   if (idx !== -1) {
-    products[idx].stock = Math.max(0, parseInt(stock, 10) || 0);
+    if (colour_stocks && typeof colour_stocks === "object") {
+      products[idx].colour_stocks = { ...(products[idx].colour_stocks || {}), ...colour_stocks };
+      products[idx].stock = Object.values(products[idx].colour_stocks).reduce(
+        (sum, v) => sum + (Math.max(0, parseInt(v, 10) || 0)),
+        0
+      );
+    } else if (colour && colourStock !== undefined) {
+      products[idx].colour_stocks = {
+        ...(products[idx].colour_stocks || {}),
+        [colour]: Math.max(0, parseInt(colourStock, 10) || 0)
+      };
+      products[idx].stock = Object.values(products[idx].colour_stocks).reduce(
+        (sum, v) => sum + (Math.max(0, parseInt(v, 10) || 0)),
+        0
+      );
+    } else if (stock !== undefined) {
+      products[idx].stock = Math.max(0, parseInt(stock, 10) || 0);
+    }
     products[idx].updated_at = new Date().toISOString();
     writeProductsToFile(products);
     return res.json({ success: true, product: products[idx] });
@@ -187,6 +204,52 @@ app.post("/api/orders", (req, res) => {
   }
 
   writeOrdersToFile(orders);
+
+  // Automatically deduct stock in products file when an order is created
+  try {
+    const products = readProductsFromFile();
+    const itemsToDeduct = Array.isArray(orderData.items) && orderData.items.length > 0
+      ? orderData.items
+      : [{
+          product_id: orderData.product_id,
+          variant_colour: orderData.variant_colour || "Standard",
+          quantity: orderData.quantity || 1
+        }];
+
+    let changed = false;
+    itemsToDeduct.forEach((item) => {
+      const pId = item.product_id;
+      const cName = (item.variant_colour || "Standard").trim();
+      const q = Math.max(1, parseInt(item.quantity, 10) || 1);
+      const pIdx = products.findIndex((p) => p.id === pId || p.slug === pId);
+      if (pIdx !== -1) {
+        const prod = products[pIdx];
+        if (prod.colour_stocks && typeof prod.colour_stocks === "object") {
+          const matchedKey = Object.keys(prod.colour_stocks).find(
+            (k) => k.toLowerCase() === cName.toLowerCase()
+          );
+          if (matchedKey) {
+            prod.colour_stocks[matchedKey] = Math.max(0, (prod.colour_stocks[matchedKey] || 0) - q);
+            prod.stock = Object.values(prod.colour_stocks).reduce((sum, v) => sum + (Math.max(0, parseInt(v, 10) || 0)), 0);
+            changed = true;
+          } else {
+            prod.stock = Math.max(0, (prod.stock || 0) - q);
+            changed = true;
+          }
+        } else {
+          prod.stock = Math.max(0, (prod.stock || 0) - q);
+          changed = true;
+        }
+      }
+    });
+
+    if (changed) {
+      writeProductsToFile(products);
+    }
+  } catch (err) {
+    console.error("Order stock deduction error in server.js:", err);
+  }
+
   console.log(`[Order API] New order registered: #${orderData.order_id} by ${orderData.customer_name}`);
   res.json({ success: true, order: orderData, ordersCount: orders.length });
 });

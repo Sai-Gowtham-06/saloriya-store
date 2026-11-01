@@ -1,4 +1,62 @@
-// Utility functions for Storefront and Admin products
+export function getColourStock(product, colourName = "") {
+  if (!product) return 0;
+  const colours = Array.isArray(product.colours) ? product.colours : [];
+  const cleanColour = (colourName || "").trim().toLowerCase();
+
+  // If no colours or single look, return overall stock
+  if (!colours.length || cleanColour === "standard") {
+    if (product.colour_stocks && typeof product.colour_stocks === "object" && product.colour_stocks["Standard"] !== undefined) {
+      return Math.max(0, parseInt(product.colour_stocks["Standard"], 10) || 0);
+    }
+    return Math.max(0, parseInt(product.stock, 10) || 0);
+  }
+
+  // If colour_stocks dictionary is present
+  if (product.colour_stocks && typeof product.colour_stocks === "object") {
+    // 1. Direct or case-insensitive match
+    for (const [k, v] of Object.entries(product.colour_stocks)) {
+      if (k.trim().toLowerCase() === cleanColour) {
+        return Math.max(0, parseInt(v, 10) || 0);
+      }
+    }
+    // If colour is in product.colours but missing from colour_stocks map
+    const hasColour = colours.some((c) => c && c.trim().toLowerCase() === cleanColour);
+    if (hasColour) {
+      return 0;
+    }
+  }
+
+  // Fallback if colour_stocks was never defined on product
+  if (colours.length <= 1) {
+    return Math.max(0, parseInt(product.stock, 10) || 0);
+  }
+  return Math.max(0, parseInt(product.stock, 10) || 0);
+}
+
+export function getTotalStock(product) {
+  if (!product) return 0;
+  if (product.colour_stocks && typeof product.colour_stocks === "object") {
+    const values = Object.values(product.colour_stocks);
+    if (values.length > 0) {
+      return values.reduce((sum, v) => sum + (Math.max(0, parseInt(v, 10) || 0)), 0);
+    }
+  }
+  return Math.max(0, parseInt(product.stock, 10) || 0);
+}
+
+export function isColourOutOfStock(product, colourName = "") {
+  if (!product) return true;
+  return getColourStock(product, colourName) <= 0;
+}
+
+export function isProductOutOfStock(product) {
+  if (!product) return true;
+  const colours = Array.isArray(product.colours) ? product.colours.filter((c) => c && c.trim()) : [];
+  if (colours.length > 0 && product.colour_stocks && typeof product.colour_stocks === "object" && Object.keys(product.colour_stocks).length > 0) {
+    return colours.every((c) => isColourOutOfStock(product, c));
+  }
+  return getTotalStock(product) <= 0;
+}
 
 export function normalizeProduct(p, seedFallback = null) {
   let urls = [];
@@ -13,11 +71,49 @@ export function normalizeProduct(p, seedFallback = null) {
   if (!urls.length && seedFallback && Array.isArray(seedFallback.image_urls) && seedFallback.image_urls.length > 0) {
     urls = seedFallback.image_urls;
   }
+  const colours = Array.isArray(p.colours) ? p.colours : (seedFallback?.colours || []);
+
+  // Normalize per-colour stocks
+  let colour_stocks = {};
+  if (p.colour_stocks && typeof p.colour_stocks === "object" && !Array.isArray(p.colour_stocks)) {
+    colour_stocks = { ...p.colour_stocks };
+  } else if (seedFallback?.colour_stocks && typeof seedFallback.colour_stocks === "object" && !Array.isArray(seedFallback.colour_stocks)) {
+    colour_stocks = { ...seedFallback.colour_stocks };
+  } else if (colours.length > 0) {
+    const currentStock = Math.max(0, parseInt(p.stock ?? seedFallback?.stock ?? 5, 10));
+    if (colours.length === 1) {
+      colour_stocks = { [colours[0]]: currentStock };
+    } else {
+      const baseStock = Math.floor(currentStock / colours.length);
+      const remainder = currentStock % colours.length;
+      colours.forEach((c, idx) => {
+        colour_stocks[c] = baseStock + (idx < remainder ? 1 : 0);
+      });
+    }
+  }
+
+  // Ensure every active colour has an entry in colour_stocks
+  if (colours.length > 0) {
+    colours.forEach((c) => {
+      if (colour_stocks[c] === undefined) {
+        colour_stocks[c] = 0;
+      } else {
+        colour_stocks[c] = Math.max(0, parseInt(colour_stocks[c], 10) || 0);
+      }
+    });
+  }
+
+  const effectiveStock = Object.keys(colour_stocks).length > 0
+    ? Object.values(colour_stocks).reduce((sum, val) => sum + (parseInt(val, 10) || 0), 0)
+    : Math.max(0, parseInt(p.stock ?? seedFallback?.stock ?? 0, 10));
+
   return {
     ...p,
     image_urls: urls,
     images: urls,
-    colours: Array.isArray(p.colours) ? p.colours : (seedFallback?.colours || [])
+    colours,
+    colour_stocks,
+    stock: effectiveStock
   };
 }
 

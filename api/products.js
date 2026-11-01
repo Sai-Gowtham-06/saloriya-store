@@ -131,12 +131,33 @@ export default async function handler(req, res) {
     // 2. PUT /api/products/:id/stock
     if (req.method === "PUT" && isStockUpdate) {
       const id = idFromPath || req.query?.id || req.body?.id;
-      const stock = Math.max(0, parseInt(req.body?.stock, 10) || 0);
+      const { stock, colour_stocks, colour, colourStock } = req.body || {};
 
       let products = readProducts();
       const idx = products.findIndex((p) => p.id === id || p.slug === id);
+      let calculatedStock = Math.max(0, parseInt(stock, 10) || 0);
+
       if (idx !== -1) {
-        products[idx].stock = stock;
+        if (colour_stocks && typeof colour_stocks === "object") {
+          products[idx].colour_stocks = { ...(products[idx].colour_stocks || {}), ...colour_stocks };
+          calculatedStock = Object.values(products[idx].colour_stocks).reduce(
+            (sum, v) => sum + (Math.max(0, parseInt(v, 10) || 0)),
+            0
+          );
+          products[idx].stock = calculatedStock;
+        } else if (colour && colourStock !== undefined) {
+          products[idx].colour_stocks = {
+            ...(products[idx].colour_stocks || {}),
+            [colour]: Math.max(0, parseInt(colourStock, 10) || 0)
+          };
+          calculatedStock = Object.values(products[idx].colour_stocks).reduce(
+            (sum, v) => sum + (Math.max(0, parseInt(v, 10) || 0)),
+            0
+          );
+          products[idx].stock = calculatedStock;
+        } else {
+          products[idx].stock = calculatedStock;
+        }
         products[idx].updated_at = new Date().toISOString();
         writeProducts(products);
       }
@@ -144,6 +165,10 @@ export default async function handler(req, res) {
       // Sync with Supabase
       if (SUPABASE_URL && SUPABASE_KEY) {
         try {
+          const patchBody = { stock: calculatedStock };
+          if (idx !== -1 && products[idx].colour_stocks) {
+            patchBody.colour_stocks = products[idx].colour_stocks;
+          }
           await fetch(`${SUPABASE_URL}/rest/v1/products?id=eq.${encodeURIComponent(id)}`, {
             method: "PATCH",
             headers: {
@@ -151,7 +176,7 @@ export default async function handler(req, res) {
               Authorization: `Bearer ${SUPABASE_KEY}`,
               "Content-Type": "application/json"
             },
-            body: JSON.stringify({ stock })
+            body: JSON.stringify(patchBody)
           });
         } catch (e) {}
       }
@@ -234,6 +259,7 @@ export default async function handler(req, res) {
         price_paise: Number(body.price_paise) || 0,
         stock: Math.max(0, parseInt(body.stock, 10) || 0),
         colours: Array.isArray(body.colours) ? body.colours : [],
+        colour_stocks: (body.colour_stocks && typeof body.colour_stocks === "object") ? body.colour_stocks : {},
         image_urls: Array.isArray(body.image_urls) ? body.image_urls : (Array.isArray(body.images) ? body.images : []),
         is_published: body.is_published !== false,
         updated_at: new Date().toISOString()

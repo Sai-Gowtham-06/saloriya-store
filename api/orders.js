@@ -182,6 +182,53 @@ export default async function handler(req, res) {
 
       writeOrders(orders);
 
+      // Deduct stock for ordered piece and colour variant
+      try {
+        const productsFilePath = path.resolve(process.cwd(), "src", "productsSeed.json");
+        if (fs.existsSync(productsFilePath)) {
+          const prods = JSON.parse(fs.readFileSync(productsFilePath, "utf8"));
+          const itemsToDeduct = Array.isArray(body.items) && body.items.length > 0
+            ? body.items
+            : [{
+                product_id: body.product_id,
+                variant_colour: body.variant_colour || "Standard",
+                quantity: body.quantity || 1
+              }];
+          let prodsChanged = false;
+          itemsToDeduct.forEach((item) => {
+            const pId = item.product_id;
+            const cName = (item.variant_colour || "Standard").trim();
+            const q = Math.max(1, parseInt(item.quantity, 10) || 1);
+            const pIdx = prods.findIndex((p) => p.id === pId || p.slug === pId);
+            if (pIdx !== -1) {
+              const p = prods[pIdx];
+              if (p.colour_stocks && typeof p.colour_stocks === "object") {
+                const matchedKey = Object.keys(p.colour_stocks).find(
+                  (k) => k.toLowerCase() === cName.toLowerCase()
+                );
+                if (matchedKey) {
+                  p.colour_stocks[matchedKey] = Math.max(0, (p.colour_stocks[matchedKey] || 0) - q);
+                  p.stock = Object.values(p.colour_stocks).reduce((sum, v) => sum + (Math.max(0, parseInt(v, 10) || 0)), 0);
+                  prodsChanged = true;
+                } else {
+                  p.stock = Math.max(0, (p.stock || 0) - q);
+                  prodsChanged = true;
+                }
+              } else {
+                p.stock = Math.max(0, (p.stock || 0) - q);
+                prodsChanged = true;
+              }
+            }
+          });
+          if (prodsChanged) {
+            fs.writeFileSync(productsFilePath, JSON.stringify(prods, null, 2), "utf8");
+            globalThis.__saloriya_products_store = prods;
+          }
+        }
+      } catch (err) {
+        console.warn("Stock deduction notice in api/orders:", err);
+      }
+
       // Persist to Supabase orders table across all devices
       if (SUPABASE_URL && SUPABASE_KEY) {
         try {

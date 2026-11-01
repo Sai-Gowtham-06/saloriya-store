@@ -107,7 +107,20 @@ function vercelApiDevPlugin() {
             const products = readProducts();
             const idx = products.findIndex((p) => p.id === id || p.slug === id);
             if (idx !== -1) {
-              products[idx].stock = Math.max(0, parseInt(body.stock, 10) || 0);
+              if (body.colour_stocks && typeof body.colour_stocks === "object") {
+                products[idx].colour_stocks = { ...products[idx].colour_stocks, ...body.colour_stocks };
+                const total = Object.values(products[idx].colour_stocks).reduce((sum, v) => sum + Math.max(0, parseInt(v, 10) || 0), 0);
+                products[idx].stock = total;
+              } else if (body.colour && body.colourStock !== undefined) {
+                if (!products[idx].colour_stocks || typeof products[idx].colour_stocks !== "object") {
+                  products[idx].colour_stocks = {};
+                }
+                products[idx].colour_stocks[body.colour] = Math.max(0, parseInt(body.colourStock, 10) || 0);
+                const total = Object.values(products[idx].colour_stocks).reduce((sum, v) => sum + Math.max(0, parseInt(v, 10) || 0), 0);
+                products[idx].stock = total;
+              } else if (body.stock !== undefined) {
+                products[idx].stock = Math.max(0, parseInt(body.stock, 10) || 0);
+              }
               products[idx].updated_at = new Date().toISOString();
               writeProducts(products);
               return res.json({ success: true, product: products[idx] });
@@ -193,6 +206,37 @@ function vercelApiDevPlugin() {
               orders.unshift(body);
             }
             writeOrders(orders);
+
+            // Automatically decrement stock for ordered items
+            try {
+              const products = readProducts();
+              let changed = false;
+              const items = Array.isArray(body.items) ? body.items : [body];
+              for (const it of items) {
+                const pId = it.product_id || it.id || it.slug;
+                const colour = it.variant_colour || it.colour || it.selected_colour || "";
+                const qty = Math.max(1, parseInt(it.quantity, 10) || 1);
+                const pIdx = products.findIndex((p) => p.id === pId || p.slug === pId);
+                if (pIdx !== -1) {
+                  const p = products[pIdx];
+                  if (colour && p.colour_stocks && typeof p.colour_stocks === "object" && p.colour_stocks[colour] !== undefined) {
+                    const current = Math.max(0, parseInt(p.colour_stocks[colour], 10) || 0);
+                    p.colour_stocks[colour] = Math.max(0, current - qty);
+                    p.stock = Object.values(p.colour_stocks).reduce((sum, v) => sum + Math.max(0, parseInt(v, 10) || 0), 0);
+                    changed = true;
+                  } else if (p.stock !== undefined) {
+                    p.stock = Math.max(0, (parseInt(p.stock, 10) || 0) - qty);
+                    changed = true;
+                  }
+                }
+              }
+              if (changed) {
+                writeProducts(products);
+              }
+            } catch (err) {
+              console.warn("Vite API: stock deduction skipped:", err.message);
+            }
+
             return res.json({ success: true, order: body, ordersCount: orders.length });
           }
 

@@ -1,11 +1,12 @@
 import React, { useState, useMemo } from "react";
-import { useStore } from "../../context/StoreContext";
+import { useStore, getColourStock } from "../../context/StoreContext";
 import { supabase, isSupabaseConfigured } from "../../supabase.js";
 import AdminDeleteConfirmModal from "./AdminDeleteConfirmModal.jsx";
 
 export default function AdminProductStudio({ products, onProductChanged, editingProduct, setEditingProduct, openAddTrigger }) {
   const {
     updateProductStock,
+    updateProductColourStock,
     toggleProductPublish,
     deleteProduct,
     saveProduct,
@@ -23,6 +24,7 @@ export default function AdminProductStudio({ products, onProductChanged, editing
   const [refreshToast, setRefreshToast] = useState("");
   const [deleteTargetProduct, setDeleteTargetProduct] = useState(null);
   const [isDeletingProduct, setIsDeletingProduct] = useState(false);
+  const [colourStocks, setColourStocks] = useState({});
 
   // Form Fields
   const [formData, setFormData] = useState({
@@ -57,6 +59,18 @@ export default function AdminProductStudio({ products, onProductChanged, editing
         is_published: editingProduct.is_published !== false
       });
 
+      const cols = Array.isArray(editingProduct.colours) ? editingProduct.colours : [];
+      let cStocks = {};
+      if (editingProduct.colour_stocks && typeof editingProduct.colour_stocks === "object") {
+        cStocks = { ...editingProduct.colour_stocks };
+      }
+      cols.forEach((c) => {
+        if (cStocks[c] === undefined) {
+          cStocks[c] = getColourStock(editingProduct, c);
+        }
+      });
+      setColourStocks(cStocks);
+
       const urls = Array.isArray(editingProduct.image_urls) && editingProduct.image_urls.length > 0
         ? editingProduct.image_urls
         : (Array.isArray(editingProduct.images) ? editingProduct.images : []);
@@ -75,6 +89,23 @@ export default function AdminProductStudio({ products, onProductChanged, editing
     }).format((paise || 0) / 100);
   };
 
+  const parsedColours = useMemo(() => {
+    return (formData.colours || "")
+      .split(",")
+      .map((c) => c.trim().toUpperCase())
+      .filter(Boolean);
+  }, [formData.colours]);
+
+  const calculatedTotalStock = useMemo(() => {
+    if (parsedColours.length > 0) {
+      return parsedColours.reduce((sum, c) => {
+        const val = colourStocks[c] !== undefined ? colourStocks[c] : 1;
+        return sum + (Math.max(0, parseInt(val, 10) || 0));
+      }, 0);
+    }
+    return Math.max(0, parseInt(formData.stock || "0", 10) || 0);
+  }, [parsedColours, colourStocks, formData.stock]);
+
   const handleOpenAdd = () => {
     setEditingProduct(null);
     setFormData({
@@ -88,6 +119,7 @@ export default function AdminProductStudio({ products, onProductChanged, editing
       stock: "5",
       is_published: true
     });
+    setColourStocks({});
     setImageList([]);
     setFormMsg("");
     setIsFormOpen(true);
@@ -200,7 +232,17 @@ export default function AdminProductStudio({ products, onProductChanged, editing
       .filter(Boolean);
 
     const pricePaise = Math.round(parseFloat(formData.priceInr || "0") * 100);
-    const stockVal = parseInt(formData.stock || "0", 10);
+
+    const finalColourStocks = {};
+    if (coloursArray.length > 0) {
+      coloursArray.forEach((c) => {
+        finalColourStocks[c] = Math.max(0, parseInt(colourStocks[c] !== undefined ? colourStocks[c] : 1, 10) || 0);
+      });
+    }
+
+    const effectiveStock = coloursArray.length > 0
+      ? Object.values(finalColourStocks).reduce((sum, v) => sum + v, 0)
+      : Math.max(0, parseInt(formData.stock || "0", 10) || 0);
 
     const payload = {
       ...(formData.id ? { id: formData.id } : {}),
@@ -209,8 +251,9 @@ export default function AdminProductStudio({ products, onProductChanged, editing
       description: formData.description.trim(),
       category: formData.category,
       price_paise: pricePaise,
-      stock: stockVal,
+      stock: effectiveStock,
       colours: coloursArray,
+      colour_stocks: finalColourStocks,
       image_urls: finalImageUrls,
       images: finalImageUrls,
       is_published: formData.is_published,
@@ -453,19 +496,79 @@ export default function AdminProductStudio({ products, onProductChanged, editing
                   </span>
                 </label>
 
-                <label>
-                  Stock Quantity Available *
-                  <input
-                    name="stock"
-                    type="number"
-                    required
-                    min="0"
-                    step="1"
-                    value={formData.stock}
-                    onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
-                  />
-                  <span className="field-hint">Automatically decrements whenever an order is confirmed.</span>
-                </label>
+                {parsedColours.length > 0 ? (
+                  <div style={{ marginTop: "12px", background: "#fcf8f5", padding: "12px", borderRadius: "8px", border: "1px solid var(--line)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                      <strong style={{ fontSize: "12px", color: "var(--wine)" }}>
+                        ✨ Individual Stock per Colour Variant:
+                      </strong>
+                      <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--ink)" }}>
+                        Combined Total: <span style={{ color: calculatedTotalStock <= 0 ? "#dc2626" : "var(--wine)", fontSize: "13px" }}>{calculatedTotalStock}</span> pcs
+                      </span>
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: "10px" }}>
+                      {parsedColours.map((c) => {
+                        const val = colourStocks[c] !== undefined ? colourStocks[c] : 1;
+                        const isSold = parseInt(val, 10) <= 0;
+                        return (
+                          <div
+                            key={c}
+                            style={{
+                              background: "#ffffff",
+                              padding: "8px 10px",
+                              borderRadius: "6px",
+                              border: `1.5px solid ${isSold ? "#fecaca" : "var(--line)"}`
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                              <span style={{ fontSize: "11.5px", fontWeight: 700, color: "var(--ink)" }}>{c}</span>
+                              {isSold && (
+                                <span style={{ fontSize: "9px", color: "#dc2626", fontWeight: 700, background: "#fee2e2", padding: "1px 5px", borderRadius: "4px" }}>
+                                  Out of Stock
+                                </span>
+                              )}
+                            </div>
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              value={val}
+                              onChange={(e) => {
+                                const num = Math.max(0, parseInt(e.target.value, 10) || 0);
+                                setColourStocks((prev) => ({ ...prev, [c]: num }));
+                              }}
+                              style={{
+                                width: "100%",
+                                padding: "6px 8px",
+                                fontSize: "13px",
+                                fontWeight: 700,
+                                borderRadius: "4px",
+                                border: "1px solid var(--line)"
+                              }}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <span className="field-hint" style={{ marginTop: "8px", display: "block" }}>
+                      Stock for each colour is tracked independently. When an order for a colour is confirmed, that colour's stock decrements and marks Out of Stock when 0.
+                    </span>
+                  </div>
+                ) : (
+                  <label>
+                    Stock Quantity Available *
+                    <input
+                      name="stock"
+                      type="number"
+                      required
+                      min="0"
+                      step="1"
+                      value={formData.stock}
+                      onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
+                    />
+                    <span className="field-hint">Automatically decrements whenever an order is confirmed.</span>
+                  </label>
+                )}
 
                 <div className="editor-publish-box" style={{ marginTop: "14px" }}>
                   <label className="checkbox-label">
@@ -773,9 +876,37 @@ export default function AdminProductStudio({ products, onProductChanged, editing
 
                 <div style={{ margin: "6px 0" }}>
                   {hasColours ? (
-                    <span className="card-variant-badge multi-colour">
-                      ✨ {p.colours.length} Colours ({p.colours.join(", ")})
-                    </span>
+                    <div>
+                      <span className="card-variant-badge multi-colour" style={{ marginBottom: "6px" }}>
+                        ✨ {p.colours.length} Colour Variants
+                      </span>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "4px" }}>
+                        {p.colours.map((c) => {
+                          const cStock = getColourStock(p, c);
+                          const isSold = cStock <= 0;
+                          return (
+                            <span
+                              key={c}
+                              style={{
+                                fontSize: "10px",
+                                padding: "2px 6px",
+                                borderRadius: "8px",
+                                background: isSold ? "#fee2e2" : "#f0fdf4",
+                                color: isSold ? "#991b1b" : "#166534",
+                                border: `1px solid ${isSold ? "#fecaca" : "#bbf7d0"}`,
+                                fontWeight: 600,
+                                display: "inline-flex",
+                                alignItems: "center",
+                                gap: "3px"
+                              }}
+                            >
+                              {c}: <strong>{cStock}</strong>
+                              {isSold && <span style={{ color: "#dc2626", fontWeight: 700 }}>(Out)</span>}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
                   ) : (
                     <span className="card-variant-badge single-look">👑 Single Signature Look</span>
                   )}
@@ -790,27 +921,33 @@ export default function AdminProductStudio({ products, onProductChanged, editing
 
                 {/* Stock Controls Stepper */}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", margin: "10px 0", background: "#fdf8f5", padding: "6px 10px", borderRadius: "6px" }}>
-                  <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted)" }}>Quick Stock:</span>
+                  <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--muted)" }}>
+                    {hasColours ? "Total Stock:" : "Quick Stock:"}
+                  </span>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <button
-                      type="button"
-                      className="button button-outline button-small"
-                      style={{ padding: "2px 8px", minHeight: "26px" }}
-                      onClick={() => handleStockDelta(p.id, p.stock || 0, -1)}
-                    >
-                      −
-                    </button>
+                    {!hasColours && (
+                      <button
+                        type="button"
+                        className="button button-outline button-small"
+                        style={{ padding: "2px 8px", minHeight: "26px" }}
+                        onClick={() => handleStockDelta(p.id, p.stock || 0, -1)}
+                      >
+                        −
+                      </button>
+                    )}
                     <strong style={{ minWidth: "24px", textAlign: "center", color: p.stock <= 0 ? "#dc2626" : "inherit" }}>
-                      {p.stock || 0}
+                      {p.stock || 0} pcs
                     </strong>
-                    <button
-                      type="button"
-                      className="button button-outline button-small"
-                      style={{ padding: "2px 8px", minHeight: "26px" }}
-                      onClick={() => handleStockDelta(p.id, p.stock || 0, 1)}
-                    >
-                      +
-                    </button>
+                    {!hasColours && (
+                      <button
+                        type="button"
+                        className="button button-outline button-small"
+                        style={{ padding: "2px 8px", minHeight: "26px" }}
+                        onClick={() => handleStockDelta(p.id, p.stock || 0, 1)}
+                      >
+                        +
+                      </button>
+                    )}
                   </div>
                 </div>
 
